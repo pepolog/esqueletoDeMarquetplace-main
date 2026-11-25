@@ -219,7 +219,7 @@ class LocalApi {
     await wait(APP_CONFIG.demoLatencyMs);
     this.db = buildSeedData();
     this.#persist();
-    safeStorage.remove('sessionStorage', 'trato.viewed');
+    safeStorage.remove('sessionStorage', 'lonja.viewed');
     // Las cuentas creadas se borran con los datos: si la sesión era de una de ellas, se cierra.
     if (!(await this.getCurrentUserId())) this.#setSession(null);
     return true;

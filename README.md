@@ -2,11 +2,11 @@
 
 Este es un comienzo o unas bases para seguir con este proyecto.
 
-## Trato — Esqueleto de marketplace multifuncional
+## Lonja — Esqueleto de marketplace multifuncional
 
 Prototipo navegable de una plataforma para **comprar, vender y alquilar** artículos de segunda mano, coches, motos, viviendas y habitaciones desde una misma aplicación.
 
-> **Importante:** es una **demostración 100 % local**. No hay servidor, pagos ni mensajería reales. Las cuentas (registro e inicio de sesión) funcionan, pero se guardan solo en el `LocalStorage` del navegador, igual que el resto de datos. «Trato» es un nombre provisional.
+> **Importante:** es una **demostración 100 % local**. No hay servidor, pagos ni mensajería reales. Las cuentas (registro e inicio de sesión) funcionan, pero se guardan solo en el `LocalStorage` del navegador, igual que el resto de datos.
 
 ---
 
@@ -28,7 +28,9 @@ Abre `http://localhost:8080` en un navegador moderno (Chrome, Edge, Firefox o Sa
 
 ### Verla publicada (GitHub Pages)
 
-En **Settings › Pages** del repositorio elige *Deploy from a branch*, la rama con el código y la carpeta **/ (root)**. La web queda en `https://pepolog.github.io/esqueletoDeMarquetplace/`. No necesita ningún paso de compilación.
+En **Settings › Pages** del repositorio elige *Deploy from a branch*, la rama con el código y la carpeta **/ (root)**. La web queda en `https://pepolog.github.io/esqueletoDeMarquetplace-main/`. No necesita ningún paso de compilación.
+
+GitHub Pages solo publica gratis repositorios **públicos**. Si el repositorio es privado, primero hay que hacerlo público en *Settings › General › Danger Zone › Change visibility* (o tener un plan de pago de GitHub).
 
 **Restablecer los datos:** menú de usuario (avatar arriba a la derecha) › *Restablecer datos de prueba*.
 

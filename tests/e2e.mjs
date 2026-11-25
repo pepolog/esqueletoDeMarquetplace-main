@@ -163,7 +163,7 @@ await openMenu();
 assert.equal(await menuName(), 'Prueba Automática');
 assert.equal(await page.locator('#demo-user-switch option[value^="usr_"]').count(), 0, 'own account not in demo switcher');
 await page.click('#user-menu-trigger');
-const stored = await page.evaluate(() => localStorage.getItem('trato.db.v1'));
+const stored = await page.evaluate(() => localStorage.getItem('lonja.db.v1'));
 assert.ok(!stored.includes('secreta123') && stored.includes('PBKDF2-SHA256'), 'password stored hashed');
 log('   Registro con validaciones (campos, correo repetido, contraseñas) y contraseña cifrada');
 

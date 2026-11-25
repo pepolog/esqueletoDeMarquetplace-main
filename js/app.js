@@ -361,8 +361,9 @@ function renderHome(container) {
       <section class="hero">
         <div class="container hero__inner">
           <div class="hero__text">
+            <p class="hero__eyebrow">Lonja · tu mercado de confianza</p>
             <h1>Compra, vende y alquila<br /><span>todo en un mismo sitio</span></h1>
-            <p>Artículos de segunda mano, coches, motos, viviendas y habitaciones. Sin salir de una sola aplicación.</p>
+            <p>En Lonja encuentras artículos de segunda mano, coches, motos, viviendas y habitaciones. Sin salir de una sola aplicación.</p>
           </div>
           <form class="hero-search card" id="hero-search" role="search" aria-label="Búsqueda con filtros básicos">
             <div class="hero-search__main">
@@ -578,10 +579,10 @@ function renderCategories(container) {
 function registerViewOnce(listing) {
   if (listing.sellerId === select.currentUserId() || listing.status !== 'active') return;
   let viewed = [];
-  try { viewed = JSON.parse(safeStorage.get('sessionStorage', 'trato.viewed') ?? '[]'); } catch { viewed = []; }
+  try { viewed = JSON.parse(safeStorage.get('sessionStorage', 'lonja.viewed') ?? '[]'); } catch { viewed = []; }
   const key = `${select.currentUserId()}:${listing.id}`;
   if (viewed.includes(key)) return;
-  safeStorage.set('sessionStorage', 'trato.viewed', JSON.stringify([...viewed, key]));
+  safeStorage.set('sessionStorage', 'lonja.viewed', JSON.stringify([...viewed, key]));
   actions.registerView(listing.id).catch(() => {});
 }
 

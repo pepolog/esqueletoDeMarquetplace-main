@@ -17,14 +17,14 @@ import { ICONS } from './icons.js';
 
 export const APP_CONFIG = {
   /** Nombre provisional de la marca. Cámbialo aquí y en el logotipo de index.html. */
-  brandName: 'Trato',
+  brandName: 'Lonja',
   locale: 'es-ES',
   currency: 'EUR',
   /** Clave de LocalStorage. Cambiar la versión fuerza la recarga de los datos de prueba. */
-  storageKey: 'trato.db.v1',
-  sessionKey: 'trato.session.v1',
+  storageKey: 'lonja.db.v1',
+  sessionKey: 'lonja.session.v1',
   /** Marca de sessionStorage: el cuadro de bienvenida (login) ya se mostró en esta pestaña. */
-  authPromptKey: 'trato.authPrompted',
+  authPromptKey: 'lonja.authPrompted',
   /**
    * Contraseña pública de las cuentas de prueba (Laura, Carlos, Marta…).
    * Las cuentas creadas desde «Crear cuenta» usan su propia contraseña, que se
