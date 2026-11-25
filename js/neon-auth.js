@@ -34,7 +34,12 @@ export class NeonAuthClient {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
   }
 
-  async #request(path, { method = 'GET', body, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+  async #request(path, options = {}) {
+    return (await this.#send(path, options)).payload;
+  }
+
+  /** Hace la petición y devuelve { payload, headers } (algunas respuestas traen el JWT en una cabecera). */
+  async #send(path, { method = 'GET', body, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
     let response;
     try {
       response = await fetch(`${this.baseUrl}${path}`, {
@@ -52,7 +57,7 @@ export class NeonAuthClient {
     if (!response.ok) {
       throw new NeonAuthError(payload?.message ?? `Error ${response.status}`, { code: payload?.code ?? `HTTP_${response.status}`, status: response.status });
     }
-    return payload;
+    return { payload, headers: response.headers };
   }
 
   /** Crea la cuenta y deja la sesión iniciada. Devuelve { user }. */
@@ -65,9 +70,20 @@ export class NeonAuthClient {
     return this.#request('/sign-in/email', { method: 'POST', body: { email, password, rememberMe: true } });
   }
 
-  /** Sesión actual: { user, session } o null si no hay sesión. Se consulta al abrir la página: espera poco. */
+  /**
+   * Sesión actual: { user, session, jwt } o null si no hay sesión. jwt es el
+   * token (unos 15 minutos de validez) que pide la Data API de Neon. Se
+   * consulta al abrir la página: espera poco.
+   */
   async getSession({ timeoutMs = 6_000 } = {}) {
-    return (await this.#request('/get-session', { timeoutMs })) ?? null;
+    const { payload, headers } = await this.#send('/get-session', { timeoutMs });
+    if (!payload?.user) return null;
+    return { ...payload, jwt: headers.get('set-auth-jwt') };
+  }
+
+  /** Token anónimo para leer los datos públicos de la Data API sin iniciar sesión. */
+  getAnonymousToken() {
+    return this.#request('/token/anonymous', { timeoutMs: 8_000 });
   }
 
   signOut() {

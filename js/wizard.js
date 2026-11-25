@@ -28,7 +28,7 @@ import { icon } from './icons.js';
 import { processImageFile, validateImageFile } from './media.js';
 import { actions, select } from './store.js';
 import {
-  badge, conditionLabel, emptyState, formatAttribute, handleError, listingStatusBadge, notice, qs, qsa, renderField, sectionHeader, toast, withBusy,
+  badge, conditionLabel, emptyState, formatAttribute, handleError, listingStatusBadge, notice, qs, qsa, renderField, sectionHeader, toast, usesDatabase, withBusy,
 } from './ui.js';
 import { deepClone, escapeHtml, formatMoney, getPath, replaceHash, setPath } from './utils.js';
 import { firstStepWithErrors, validateListing, validateListingStep, visibleCategoryFields, WIZARD_STEPS } from './validation.js';
@@ -480,7 +480,9 @@ function renderStepPhotos() {
             </div>
           </li>`).join('')}
       </ul>
-      ${notice('Demostración: las fotos se reducen y se guardan en este navegador. El almacenamiento definitivo de imágenes requiere un servicio de almacenamiento o backend.')}
+      ${notice(usesDatabase()
+        ? 'Las fotos se reducen antes de guardarlas en la base de datos. Para la versión definitiva conviene un servicio de almacenamiento de imágenes.'
+        : 'Demostración: las fotos se reducen y se guardan en este navegador. El almacenamiento definitivo de imágenes requiere un servicio de almacenamiento o backend.')}
     </div>`;
 }
 
@@ -689,7 +691,7 @@ function paintSuccess(container) {
       <span class="wizard-success__icon">${icon('check')}</span>
       <h2 tabindex="-1">${wasEdit ? 'Cambios guardados' : '¡Anuncio publicado!'}</h2>
       <p>«${escapeHtml(listing.title)}» ${wasEdit ? 'se ha actualizado' : 'ya aparece en la marketplace'}. ${listingStatusBadge(listing.status)} ${badge(category.name)}</p>
-      <p class="muted small">Registrado en el almacenamiento local de este navegador (sin servidor).</p>
+      <p class="muted small">${usesDatabase() ? 'Guardado en la base de datos de Lonja.' : 'Registrado en el almacenamiento local de este navegador (sin servidor).'}</p>
       <div class="wizard-success__actions">
         <a href="#/listing/${listing.id}" class="btn btn--primary">${icon('eye')}Ver anuncio</a>
         <a href="#/seller/listings" class="btn btn--ghost">Ir a Mis anuncios</a>

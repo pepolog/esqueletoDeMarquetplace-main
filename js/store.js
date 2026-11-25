@@ -52,6 +52,10 @@ export const select = {
   isPersistent: () => api.persistent,
   /** true si las cuentas nuevas se guardan en Neon Auth (y no solo en el navegador). */
   usesRemoteAccounts: () => api.usesRemoteAccounts,
+  /** 'neon' si los datos están en la base de datos compartida; 'local' si solo en este navegador. */
+  dataSource: () => api.dataSource,
+  /** Solo en local se pueden restablecer los datos de prueba desde la web. */
+  canResetDemo: () => api.canResetDemo,
   currentUser: () => state.db.users.find((user) => user.id === state.currentUserId) ?? null,
   users: () => state.db.users,
   /** Cuentas de prueba: se puede entrar en ellas sin escribir la contraseña. */
@@ -89,7 +93,8 @@ export const select = {
 
   isFavorite: (listingId) => state.db.favorites.some((favorite) => favorite.userId === state.currentUserId && favorite.listingId === listingId),
   favoritesOf: (userId) => state.db.favorites.filter((favorite) => favorite.userId === userId),
-  favoriteCountFor: (listingId) => state.db.favorites.filter((favorite) => favorite.listingId === listingId).length,
+  /** Cuántas personas tienen el anuncio en favoritos (la API lo envía calculado: en Neon solo se descargan los favoritos propios). */
+  favoriteCountFor: (listingId) => select.listing(listingId)?.favoriteCount ?? 0,
 
   /** Cambio de precio desde que se guardó en favoritos (derivado del historial de precios). */
   priceChangeSince(listing, sinceIso) {
@@ -152,7 +157,7 @@ export const select = {
       rented: countStatus('rented'),
       drafts: countStatus('draft'),
       views: listings.reduce((sum, listing) => sum + (listing.views ?? 0), 0),
-      favoritesReceived: state.db.favorites.filter((favorite) => listings.some((listing) => listing.id === favorite.listingId)).length,
+      favoritesReceived: listings.reduce((sum, listing) => sum + (listing.favoriteCount ?? 0), 0),
       pendingOrders: orders.filter((order) => order.status === 'pending').length,
       completedSales: completed.length,
       grossRevenue: gross,

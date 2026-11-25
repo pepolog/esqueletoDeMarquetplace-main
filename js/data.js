@@ -38,6 +38,13 @@ export const APP_CONFIG = {
    * las cuentas se guarden solo en el navegador, como en la primera versión.
    */
   neonAuthUrl: 'https://ep-plain-voice-za40eyd4.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth',
+  /**
+   * URL de la Data API de Neon (misma rama y base de datos). Con ella, todos
+   * los datos (anuncios, pedidos, favoritos, mensajes…) se guardan en Neon y
+   * los comparte todo el mundo. Vacía ('') = todo en este navegador.
+   * Abrir la web con ?modo=local fuerza la versión local aunque esté configurada.
+   */
+  dataApiUrl: 'https://ep-plain-voice-za40eyd4.apirest.c-2.eu-west-2.aws.neon.tech/neondb/rest/v1',
   passwordMinLength: 8,
   /** Latencia simulada de la "API" local, para que se vean los indicadores de carga. */
   demoLatencyMs: 180,
@@ -341,6 +348,38 @@ function escapeXml(text) {
   return String(text).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
+/**
+ * Las imágenes de los anuncios de prueba se guardan en la base de datos como
+ * una referencia corta («demo:» + parámetros) en lugar de la ilustración
+ * completa. Esta función la convierte en la imagen real al leerla.
+ */
+export function resolveImageSrc(src) {
+  if (typeof src !== 'string' || !src.startsWith('demo:')) return src;
+  try {
+    return placeholderImage(JSON.parse(decodeURIComponent(src.slice(5))));
+  } catch {
+    return placeholderImage({ label: 'Imagen' });
+  }
+}
+
+/** Referencia corta de una ilustración de prueba (ver resolveImageSrc). */
+export function demoImageRef(params) {
+  return `demo:${encodeURIComponent(JSON.stringify(params))}`;
+}
+
+/**
+ * Cuentas de prueba. En el modo con base de datos (Neon) son cuentas reales de
+ * Neon Auth con la contraseña pública APP_CONFIG.demoPassword; la web las usa
+ * para el selector «Cuenta de demostración» y para entrar con su nombre de usuario.
+ */
+export const DEMO_ACCOUNTS = [
+  { legacyId: 'u1', username: 'lauram', email: 'laura.martin@example.com', displayName: 'Laura M.' },
+  { legacyId: 'u2', username: 'motorcarlos', email: 'carlos.ruiz@example.com', displayName: 'Carlos Ruiz' },
+  { legacyId: 'u3', username: 'casasmarta', email: 'marta.gomez@example.com', displayName: 'Marta Gómez' },
+  { legacyId: 'u4', username: 'techdavid', email: 'david.lopez@example.com', displayName: 'David López' },
+  { legacyId: 'u5', username: 'anasport', email: 'ana.torres@example.com', displayName: 'Ana Torres' },
+];
+
 export function placeholderImage({ label, hue = 215, iconName = 'box', variant = 0 }) {
   const paths = ICONS[iconName] ?? ICONS.box;
   const baseHue = (hue + variant * 25) % 360;
@@ -414,11 +453,11 @@ export function buildSeedData() {
   const listing = ({ id, sellerId, title, category, operationType = 'sale', price, rentalPeriod = null, daysAgo, imageCount = 2, ...rest }) => {
     const cat = getCategory(category);
     const createdAt = ago(daysAgo, (Number(id.slice(-2)) * 3) % 20);
-    const images = Array.from({ length: imageCount }, (_, index) => ({
-      id: `${id}_img${index}`,
-      src: placeholderImage({ label: title, hue: (cat.hue + Number(id.slice(-2)) * 11) % 360, iconName: cat.icon, variant: index }),
-      alt: `${title} — imagen ${index + 1}`,
-    }));
+    const images = Array.from({ length: imageCount }, (_, index) => {
+      const params = { label: title, hue: (cat.hue + Number(id.slice(-2)) * 11) % 360, iconName: cat.icon, variant: index };
+      // ref: lo que se guarda en la base de datos; src: la ilustración para el modo local.
+      return { id: `${id}_img${index}`, src: placeholderImage(params), ref: demoImageRef(params), alt: `${title} — imagen ${index + 1}` };
+    });
     const attributes = rest.attributes ?? {};
     return {
       id, sellerId, title, category,

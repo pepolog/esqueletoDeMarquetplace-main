@@ -6,7 +6,9 @@ Este es un comienzo o unas bases para seguir con este proyecto.
 
 Prototipo navegable de una plataforma para **comprar, vender y alquilar** artículos de segunda mano, coches, motos, viviendas y habitaciones desde una misma aplicación.
 
-> **Importante:** las **cuentas son reales**: se guardan en [Neon](https://neon.com) con Neon Auth (Managed Better Auth), en la tabla `neon_auth.user`. El resto (anuncios, pedidos, mensajes, favoritos y perfil ampliado) sigue siendo una **demostración local** guardada en el `LocalStorage` del navegador. No hay pagos ni mensajería reales.
+> **Importante:** los datos son **reales y compartidos**. Las cuentas se guardan en [Neon](https://neon.com) con Neon Auth (Managed Better Auth) y los perfiles, anuncios, pedidos, favoritos, mensajes, valoraciones y denuncias en una base de datos Postgres de Neon, a la que la web accede con la **Data API**. Lo que publique cualquiera lo ven los demás. No hay pagos reales.
+>
+> Abriendo la web con `?modo=local` (por ejemplo `http://localhost:8080/?modo=local`) todo vuelve a guardarse solo en el navegador, como en la primera versión.
 
 ---
 
@@ -32,13 +34,38 @@ En **Settings › Pages** del repositorio elige *Deploy from a branch*, la rama 
 
 GitHub Pages solo publica gratis repositorios **públicos**. Si el repositorio es privado, primero hay que hacerlo público en *Settings › General › Danger Zone › Change visibility* (o tener un plan de pago de GitHub).
 
-**Restablecer los datos:** menú de usuario (avatar arriba a la derecha) › *Restablecer datos de prueba*.
+### Base de datos en Neon
 
-### Cuentas en Neon (Neon Auth)
+| Pieza | Dónde |
+|---|---|
+| Proyecto | `Marketpleace_Intermodular`, rama `production`, base de datos `neondb` |
+| Cuentas (Neon Auth) | `APP_CONFIG.neonAuthUrl` en `js/data.js` · tabla `neon_auth."user"` |
+| Datos (Data API) | `APP_CONFIG.dataApiUrl` en `js/data.js` · tablas del esquema `public` |
+| Esquema, seguridad y reglas | `db/schema.sql` |
 
-- La URL de Neon Auth está en `APP_CONFIG.neonAuthUrl` (`js/data.js`). No es un secreto. Si se deja vacía, las cuentas vuelven a guardarse solo en el navegador.
-- El dominio desde el que se sirve la web debe estar en los **dominios de confianza** de Neon Auth (*Neon Console › Auth › Configuration › Domains*). Ahora están `https://pepolog.github.io` y `localhost` (permitido mientras *Allow localhost* esté activado).
-- Para ver los usuarios registrados: *Neon Console › SQL Editor* › `SELECT id, name, email, "createdAt" FROM neon_auth."user";`
+Ninguna de las dos URL es un secreto. La seguridad la pone la base de datos: cada petición lleva el token (JWT) de la sesión, o uno anónimo para invitados, y `db/schema.sql` decide qué puede hacer cada uno:
+
+- **RLS (Row-Level Security):** cada usuario solo ve sus pedidos, mensajes, favoritos, denuncias y datos privados. Los borradores solo los ve su dueño.
+- **Permisos (GRANT):** los invitados solo pueden leer anuncios, perfiles públicos y valoraciones.
+- **Funciones de la base de datos:** pedidos, cambios de estado, favoritos, mensajes, valoraciones, visitas y estado o borrado de anuncios se hacen con funciones que aplican las reglas de negocio. Por ejemplo, no se puede comprar lo propio, ni hacer pedidos duplicados o reservas solapadas, y las transiciones dependen de si eres comprador o vendedor.
+- **Disparadores:** impiden falsear campos como el vendedor, las visitas o el estado.
+
+Las tablas antiguas `User`, `_prisma_migrations` y `playing_with_neon` no tienen permisos para la Data API, así que no se pueden leer desde la web.
+
+Otros datos útiles:
+
+- **Dominios de confianza de Neon Auth** (*Neon Console › Auth › Configuration › Domains*): `https://pepolog.github.io` y `localhost`, permitido mientras *Allow localhost* siga activado. Desactívalo cuando la web sea pública de verdad.
+- **Ver los datos:** *Neon Console › Tables*, o en el SQL Editor, por ejemplo `SELECT id, name, email FROM neon_auth."user";` o `SELECT id, title, status FROM listings;`.
+- **Cambiar el esquema:** edita `db/schema.sql`, ejecútalo en el SQL Editor (se puede repetir) y pulsa *Data API › Refresh schema cache*.
+
+**Restablecer los datos de prueba.** Con la base de datos compartida no se puede hacer desde la web. Se hace así:
+
+```bash
+node db/create-demo-accounts.mjs          # crea las 5 cuentas de prueba en Neon Auth si faltan
+node db/build-seed.mjs > db/seed.sql      # genera el SQL con fechas recientes
+```
+
+Después ejecuta `db/seed.sql` en *Neon Console › SQL Editor*. **Borra todos** los anuncios, pedidos, mensajes, etc. y carga los de prueba; las cuentas de Neon Auth no se tocan. En modo local, el menú de usuario mantiene *Restablecer datos de prueba*.
 
 ### Prueba automática de los escenarios (opcional)
 
@@ -56,14 +83,21 @@ esqueletoDeMarquetplace/
 ├── index.html          Estructura principal: cabecera, menú, contenedor de vistas, navegación móvil
 ├── styles.css          Sistema de estilos: variables, componentes y diseño responsive
 ├── README.md
+├── db/
+│   ├── schema.sql      Tablas, seguridad (RLS + permisos), disparadores y funciones de negocio de Neon
+│   ├── build-seed.mjs  Genera db/seed.sql con los datos de prueba
+│   ├── seed.sql        Datos de prueba para el SQL Editor de Neon (borra y vuelve a cargar)
+│   └── create-demo-accounts.mjs  Crea las 5 cuentas de prueba en Neon Auth
 ├── tests/
-│   └── e2e.mjs         Prueba de extremo a extremo (Playwright) de los escenarios de verificación
+│   └── e2e.mjs         Prueba de extremo a extremo (Playwright) de los escenarios de verificación (modo local)
 └── js/
     ├── app.js          Arranque, enrutado por hash, cabecera, inicio, explorar, categorías, detalle y perfil público
     ├── auth.js         Cuadro de acceso (iniciar sesión / crear cuenta / seguir como invitado) y permisos de invitado
     ├── neon-auth.js    Cliente mínimo de Neon Auth (registro, inicio y cierre de sesión, cambio de contraseña)
     ├── data.js         Configuración, categorías + esquema de campos dinámicos, estados y DATOS DE PRUEBA
-    ├── api.js          "API" local: reglas de negocio + persistencia en LocalStorage (sustituible por REST)
+    ├── api.js          Elige la "API" (Neon o local) y contiene LocalApi: reglas de negocio + LocalStorage
+    ├── remote-api.js   RemoteApi: los mismos métodos sobre la Data API de Neon (JWT de Neon Auth)
+    ├── api-shared.js   Errores, reglas de reservas y normalización de anuncios comunes a las dos
     ├── store.js        Única fuente de datos de la interfaz: selectores (datos derivados) y acciones
     ├── validation.js   Validación de anuncios por pasos (compartida por el asistente y la API)
     ├── seller.js       Panel de vendedor: resumen, Mis anuncios, pedidos recibidos, ingresos, valoraciones
@@ -90,14 +124,15 @@ Vistas (app.js, seller.js, buyer.js, profile.js, wizard.js)
 store.js  ── caché en memoria + notificación de cambios (subscribe)
         │
         ▼
-api.js (LocalApi)  ── reglas de negocio + LocalStorage   ⇄  futura RestApi (fetch)
+api.js ──┬── RemoteApi (remote-api.js) ── Neon Auth (cuentas) + Data API (datos, RLS, funciones)
+         └── LocalApi  (?modo=local)     ── reglas de negocio + LocalStorage
 ```
 
 - **Una sola fuente de datos.** Usuarios, anuncios, pedidos, favoritos, mensajes y valoraciones viven en un único objeto persistido. Las vistas nunca lo modifican directamente: llaman a `actions.*`, que pasan por la API y, al terminar, refrescan el store y avisan a la interfaz.
 - **Datos derivados, no duplicados.** Las estadísticas del vendedor, la disponibilidad («Reservado»), las conversaciones, la valoración media o los cambios de precio de favoritos se calculan a partir de las entidades (`select.sellerStats`, `select.availability`, `select.priceChangeSince`…).
 - **Enrutado por hash** (`#/seller/listings?status=active`): permite usar los botones Atrás/Adelante y compartir enlaces sin backend. Los filtros de búsqueda se reflejan en la URL sin recargar.
 - **Formularios dinámicos guiados por datos.** `data.js` define para cada categoría las operaciones admitidas, los periodos de alquiler y los campos específicos (`fields`). Un campo con `showIf: { operationType: 'rent' }` solo aparece y se valida si se alquila. El asistente pinta los campos a partir de ese esquema y la API normaliza los atributos con el mismo esquema.
-- **Preparado para backend.** Todos los métodos de `api.js` son asíncronos y devuelven promesas, con errores de negocio tipados (`ApiError`). Al final de `api.js` hay un esqueleto `RestApi`: basta con implementarlo y cambiar la exportación `api` sin tocar la interfaz.
+- **Dos implementaciones intercambiables.** `RemoteApi` y `LocalApi` tienen los mismos métodos asíncronos y los mismos errores de negocio (`ApiError`), así que la interfaz no sabe cuál está activa. `RemoteApi.getSnapshot()` descarga las tablas que el usuario puede ver y las convierte al mismo modelo de datos que la versión local. Las fotos de los anuncios de prueba se guardan como una referencia corta (`demo:`) que la web convierte en la ilustración.
 
 ### Modelos de datos
 
@@ -122,7 +157,7 @@ Las transiciones permitidas por rol están en `ORDER_TRANSITIONS` (`data.js`).
 
 Al abrir la página sin sesión aparece un cuadro de acceso con tres opciones: **iniciar sesión**, **crear una cuenta** o cerrarlo y **seguir como invitado**. Sale una vez por pestaña del navegador; después se puede abrir desde el menú de usuario (avatar arriba a la derecha).
 
-Hay cinco cuentas de prueba (correos `@example.com`). Todas usan la contraseña pública **`demo1234`** y también se puede entrar en ellas sin contraseña desde **menú de usuario › Cuenta de demostración** o desde «Probar con una cuenta de demostración» en el cuadro de acceso. Las cuentas que crees tú no aparecen ahí: piden su contraseña.
+Hay cinco cuentas de prueba (correos `@example.com`). Son cuentas reales de Neon Auth con la contraseña pública **`demo1234`**, así que **cualquiera puede entrar en ellas** y cambiar sus anuncios. También se puede entrar desde **menú de usuario › Cuenta de demostración** o desde «Probar con una cuenta de demostración» en el cuadro de acceso. Las cuentas que crees tú no aparecen ahí: piden su contraseña.
 
 | Cuenta | Perfil |
 |---|---|
@@ -132,7 +167,7 @@ Hay cinco cuentas de prueba (correos `@example.com`). Todas usan la contraseña 
 | **David López** (`u4`) | Tecnología y videojuegos |
 | **Ana Torres** (`u5`) | Deporte y moda |
 
-Incluye 27 anuncios variados (todos distintos, con ilustraciones SVG generadas localmente), 8 pedidos/reservas en distintos estados, favoritos (uno con bajada de precio), conversaciones con mensajes sin leer y valoraciones.
+Incluye 27 anuncios variados (todos distintos, con ilustraciones SVG generadas en el navegador), 8 pedidos/reservas en distintos estados, favoritos (uno con bajada de precio), conversaciones con mensajes sin leer y valoraciones. Para volver a cargarlos en Neon, ver «Restablecer los datos de prueba» más arriba.
 
 ---
 
@@ -141,11 +176,11 @@ Incluye 27 anuncios variados (todos distintos, con ilustraciones SVG generadas l
 **Cuentas y acceso**
 - Cuadro de acceso al abrir la página (no ocupa toda la pantalla; en móvil sale desde abajo) con pestañas «Iniciar sesión» y «Crear cuenta», acceso a las cuentas de prueba y botón «Seguir como invitado».
 - Registro con nombre, apellidos, usuario, correo, contraseña repetida y aceptación de condiciones. Correo y usuario únicos; contraseña de 8 caracteres como mínimo con letras y números.
-- Inicio de sesión con correo o nombre de usuario. Si falla, el mensaje no dice si existe la cuenta.
+- Inicio de sesión con el correo (en las cuentas de prueba también con el nombre de usuario). Si falla, el mensaje no dice si existe la cuenta.
 - Las cuentas nuevas se crean en **Neon Auth**: Neon cifra y comprueba la contraseña y guarda la sesión en una cookie segura de su dominio (`HttpOnly; Secure; SameSite=None; Partitioned`). La web nunca guarda la contraseña. Se puede entrar con la misma cuenta desde cualquier navegador.
-- Cada cuenta de Neon tiene en el navegador un perfil local con el mismo id que en `neon_auth.user`, que es donde se apoyan sus anuncios y pedidos (todavía locales). Si se entra desde un navegador nuevo, el nombre de usuario se deduce del correo.
+- Cada cuenta tiene un perfil en la tabla `profiles` con el mismo id que en `neon_auth.user` (y sus datos privados en `profile_private`). Se crea al registrarse o, si falta, en el primer acceso, con un nombre de usuario deducido del correo.
 - Menú de usuario con «Iniciar sesión», «Crear cuenta», «Iniciar sesión con otra cuenta» y «Cerrar sesión». Cambio de contraseña en *Ajustes › Seguridad* para las cuentas propias.
-- **Permisos de invitado:** puede ver inicio, búsqueda, categorías, anuncios, perfiles públicos y la ayuda. Para comprar, alquilar, guardar favoritos, enviar mensajes, denunciar, publicar o entrar en los paneles y ajustes se le muestra el cuadro de acceso. La API local rechaza esas acciones sin sesión (`auth_required`). Los perfiles marcados como «Solo usuarios registrados» no se muestran a invitados.
+- **Permisos de invitado:** puede ver inicio, búsqueda, categorías, anuncios, perfiles públicos y la ayuda. Para comprar, alquilar, guardar favoritos, enviar mensajes, denunciar, publicar o entrar en los paneles y ajustes se le muestra el cuadro de acceso. La base de datos también las rechaza sin sesión (permisos y RLS), y la web responde abriendo el cuadro de acceso (`auth_required`). Los perfiles marcados como «Solo usuarios registrados» no se muestran a invitados.
 
 **Navegación y diseño**
 - Cabecera persistente con logotipo sustituible, buscador, selector de categorías, favoritos, compras, mensajes (con contadores), botón «Publicar anuncio» y menú desplegable de usuario.
@@ -201,28 +236,28 @@ Están señaladas en la interfaz con la etiqueta **«Requiere backend»** o con 
 
 | Función | Estado en esta versión |
 |---|---|
-| Registro, inicio y cierre de sesión | **Reales**, con Neon Auth. Las 5 cuentas de prueba siguen siendo locales (`demo1234`) |
-| Cambio de contraseña | Real en Neon para las cuentas creadas |
+| Registro, inicio y cierre de sesión | **Reales**, con Neon Auth |
+| Cambio de contraseña | Real en Neon para las cuentas creadas (las de prueba usan `demo1234`) |
+| Datos compartidos entre usuarios y dispositivos | **Reales**: base de datos de Neon (Data API) |
 | Verificación de correo y recuperación de contraseña | No activadas (Neon Auth las admite; ver mejoras) |
-| Perfil ampliado (usuario, teléfono, ciudad, bio, foto) | Solo en este navegador; en Neon se guardan nombre y correo |
+| Cambio del correo de la cuenta | No disponible desde la web |
 | Gestión de sesiones y dispositivos | Solo se muestra la sesión actual |
 | Eliminación definitiva de la cuenta | Deshabilitado |
-| Persistencia compartida entre usuarios y dispositivos | Solo en el navegador actual |
-| Mensajería en tiempo real | Mensajes locales; para «responder» hay que cambiar de cuenta |
+| Mensajería en tiempo real | Los mensajes llegan al otro usuario, pero hay que recargar para ver respuestas nuevas |
 | Pagos, cobros, liquidaciones y facturas | No existen; los importes son estimaciones |
-| Almacenamiento definitivo de imágenes | Las fotos se reducen y se guardan como data URL en LocalStorage |
+| Almacenamiento definitivo de imágenes | Las fotos se reducen y se guardan como data URL dentro de la base de datos |
 | Envío de notificaciones (correo/push) | Solo se guardan las preferencias |
-| Moderación de anuncios y denuncias | Los anuncios se aprueban al instante; las denuncias se registran en local |
-| Exportación oficial de datos (RGPD) | Se exporta una copia local en JSON |
-| Contador de visitas fiable | Se cuenta una visita por anuncio y sesión del navegador |
+| Moderación de anuncios y denuncias | Los anuncios se publican al instante; las denuncias se guardan, pero nadie las revisa todavía |
+| Exportación oficial de datos (RGPD) | Se exporta una copia en JSON desde Ajustes |
+| Contador de visitas fiable | Cuenta una visita por anuncio y sesión del navegador (no cuenta las del vendedor) |
 
-Todas las validaciones del navegador (propietario, transiciones, solapes…) **deben repetirse en el servidor**: ocultar botones o campos en el cliente no aporta seguridad.
+Con Neon, las reglas importantes (propietario, transiciones, solapes, duplicados) **ya se comprueban en la base de datos** (`db/schema.sql`); las del navegador solo sirven para avisar antes. La validación completa del formulario de anuncios (campos por categoría) todavía solo está en el navegador; la base de datos comprueba lo básico: precio, título, estados y tamaño de las fotos.
 
 ---
 
 ## 7. Escenarios verificados
 
-Comprobados de forma automática con `tests/e2e.mjs` (sin errores de consola):
+Comprobados de forma automática con `tests/e2e.mjs` en modo local (`?modo=local`, sin tocar Neon; sin errores de consola):
 
 - Cuadro de acceso al abrir la página (una vez por pestaña), seguir como invitado y ver que favoritos, compras y secciones privadas piden iniciar sesión.
 - Crear una cuenta en Neon Auth (simulado dentro de la prueba para no llenar la base de datos): errores por campo, correo repetido, contraseñas distintas o cortas, la contraseña nunca se guarda en el navegador, cambio de contraseña, cierre de sesión también en Neon, contraseña incorrecta rechazada, entrada con el nombre de usuario, sesión mantenida al recargar y recuperada desde Neon.
@@ -243,8 +278,8 @@ Comprobados de forma automática con `tests/e2e.mjs` (sin errores de consola):
 
 ## 8. Mejoras propuestas para una segunda versión
 
-1. **Backend y base de datos** (p. ej. Node/NestJS o Django + PostgreSQL) implementando `RestApi` con las mismas reglas de `LocalApi`, transacciones y bloqueo de disponibilidad en el servidor.
-2. **Datos en Neon**: activar la Data API de Neon y llevar perfiles, anuncios, pedidos, favoritos y mensajes a tablas con políticas RLS ligadas al usuario de Neon Auth (el id del perfil local ya coincide con `neon_auth.user.id`). Después: verificación de correo, recuperación de contraseña y roles (usuario, moderador, administrador).
+1. **Cuentas**: verificación de correo, recuperación de contraseña, cambio de correo, inicio con Google y roles (usuario, moderador, administrador) con Neon Auth.
+2. **Rendimiento**: ahora cada cambio vuelve a descargar todas las tablas visibles. Con muchos anuncios hará falta paginar, descargar solo lo que cambia y validar en la base de datos todos los campos del formulario de anuncios.
 3. **Pagos** con un proveedor (Stripe Connect, Adyen…) con pago retenido hasta la entrega, fianzas, reembolsos y facturación.
 4. **Imágenes** en almacenamiento de objetos con CDN, miniaturas y moderación automática.
 5. **Mensajería en tiempo real** (WebSockets), notificaciones push y por correo, alertas de búsqueda guardadas.

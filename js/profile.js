@@ -17,7 +17,7 @@ import { actions, select } from './store.js';
 import { ApiError } from './api.js';
 import {
   avatar, backendBadge, confirmDialog, handleError, notice, openModal, openReportDialog, panelSidebar, qs, renderField, sectionHeader,
-  showFormErrors, stars, toast, withBusy,
+  showFormErrors, stars, toast, usesDatabase, withBusy,
 } from './ui.js';
 import { escapeHtml, formatDate, maskEmail, maskPhone, timeAgo } from './utils.js';
 
@@ -139,7 +139,9 @@ function renderPhoto(container) {
           </div>
         </div>
       </div>
-      ${notice('Demostración: la imagen se guarda reducida en este navegador. El almacenamiento definitivo de imágenes requerirá un servicio de almacenamiento o backend.')}`;
+      ${notice(usesDatabase()
+        ? 'La imagen se guarda reducida en la base de datos. Para la versión definitiva conviene un servicio de almacenamiento de imágenes.'
+        : 'Demostración: la imagen se guarda reducida en este navegador. El almacenamiento definitivo de imágenes requerirá un servicio de almacenamiento o backend.')}`;
 
     const input = qs('#avatar-input', container);
     input.addEventListener('change', async () => {
@@ -242,7 +244,7 @@ function exportMyData() {
   const user = select.currentUser();
   const data = {
     exportedAt: new Date().toISOString(),
-    note: 'Copia de los datos guardados en este navegador (demostración). Una exportación oficial requeriría backend.',
+    note: usesDatabase() ? 'Copia de tus datos en Lonja (versión de prueba).' : 'Copia de los datos guardados en este navegador (demostración). Una exportación oficial requeriría backend.',
     user,
     listings: select.listingsBySeller(user.id, { includeDeleted: true }),
     ordersAsBuyer: select.ordersAsBuyer(user.id),
@@ -330,7 +332,7 @@ function renderSecurity(container) {
 
     <section class="card panel-card">
       <h2>${icon('download')} Tus datos</h2>
-      <p>Obtén una copia en formato JSON de tus datos guardados en este navegador: perfil, anuncios, pedidos, favoritos, mensajes y valoraciones.</p>
+      <p>Obtén una copia en formato JSON de tus datos${usesDatabase() ? '' : ' guardados en este navegador'}: perfil, anuncios, pedidos, favoritos, mensajes y valoraciones.</p>
       <div class="form-actions"><button type="button" class="btn btn--ghost" data-download>${icon('download')}Exportar mis datos</button></div>
       <p class="muted small">Una solicitud formal de acceso a datos (RGPD) se gestionaría desde el backend.</p>
     </section>
@@ -338,7 +340,7 @@ function renderSecurity(container) {
     <section class="card panel-card panel-card--danger">
       <div class="panel-card__header"><h2>${icon('trash')} Eliminar la cuenta</h2>${backendBadge()}</div>
       <p>La eliminación definitiva de una cuenta, con sus anuncios y datos personales, debe realizarse en el servidor y no puede simularse de forma fiable.</p>
-      <p class="muted small">Si solo quieres empezar de cero en esta demostración, usa «Restablecer datos de prueba» en el menú de usuario.</p>
+      ${select.canResetDemo() ? '<p class="muted small">Si solo quieres empezar de cero en esta demostración, usa «Restablecer datos de prueba» en el menú de usuario.</p>' : ''}
       <button type="button" class="btn btn--danger" disabled>Solicitar eliminación de la cuenta</button>
     </section>`;
 
@@ -388,7 +390,7 @@ function renderNotifications(container) {
   const preferences = user.preferences.notifications;
   container.innerHTML = `
     ${sectionHeader('Notificaciones', 'Elige qué avisos quieres recibir.')}
-    ${notice('Tus preferencias se guardan en este navegador. El envío real de correos o notificaciones push requiere backend.')}
+    ${notice(usesDatabase() ? 'Tus preferencias se guardan en tu cuenta. El envío real de correos o notificaciones push todavía no está disponible.' : 'Tus preferencias se guardan en este navegador. El envío real de correos o notificaciones push requiere backend.')}
     <form id="notifications-form" class="card panel-card" novalidate>
       <ul class="toggle-list">
         ${NOTIFICATION_OPTIONS.map(([key, label, help]) => `
@@ -423,7 +425,9 @@ const FAQ = [
   ['¿Puedo reservar fechas que ya están ocupadas?', 'No. Si el vendedor ya ha confirmado una reserva en esas fechas, la plataforma rechaza la solicitud. Las solicitudes pendientes no bloquean el calendario hasta que se confirman.'],
   ['¿Necesito una cuenta?', 'Para mirar anuncios y perfiles, no: puedes navegar como invitado. Para comprar, alquilar, guardar favoritos, enviar mensajes o publicar, sí. Créala desde «Crear cuenta» en el menú de usuario; solo pide nombre, usuario, correo y contraseña.'],
   ['¿Cómo pruebo la compra y la venta entre usuarios?', `Desde el menú de usuario puedes cambiar de cuenta de demostración (contraseña de todas: ${APP_CONFIG.demoPassword}). Por ejemplo, crea un pedido como Laura y acéptalo después como el vendedor.`],
-  ['¿Dónde se guardan mis datos?', 'Tu cuenta (nombre, correo y contraseña cifrada) se guarda en el servidor, así que puedes entrar desde cualquier navegador. Los anuncios, pedidos, mensajes y el resto del perfil, de momento, solo en el almacenamiento local de este navegador: si borras los datos del sitio, se pierden. No introduzcas información sensible.'],
+  ['¿Dónde se guardan mis datos?', () => (usesDatabase()
+    ? 'En una base de datos en la nube (Neon). Tu contraseña la guarda cifrada el servicio de cuentas. Tus anuncios, valoraciones y perfil público los puede ver cualquiera; tus pedidos, mensajes, favoritos y datos personales solo tú (y la otra persona de cada pedido o conversación). Es una versión de prueba: no introduzcas información sensible.'
+    : 'Tu cuenta se guarda en el servidor, así que puedes entrar desde cualquier navegador. Los anuncios, pedidos, mensajes y el resto del perfil, solo en el almacenamiento local de este navegador: si borras los datos del sitio, se pierden. No introduzcas información sensible.')],
 ];
 
 const LEGAL = {
@@ -440,9 +444,11 @@ const LEGAL = {
     'La versión definitiva incluirá unas condiciones redactadas y revisadas por asesoría legal.',
   ]],
   privacy: ['Política de privacidad', [
-    'Los datos introducidos se guardan exclusivamente en el LocalStorage de tu navegador.',
-    'No se envían datos a ningún servidor ni a terceros.',
-    'Puedes descargar tus datos desde Ajustes › Seguridad y privacidad, o borrarlos restableciendo los datos de prueba.',
+    () => (usesDatabase()
+      ? 'Tu cuenta y los datos de la marketplace se guardan en una base de datos de Neon (Unión Europea, Londres). No se ceden a terceros.'
+      : 'Los anuncios, pedidos y mensajes se guardan en el LocalStorage de tu navegador; la cuenta, en el servicio de cuentas de Neon.'),
+    'Los datos personales (correo, teléfono, dirección) solo los ves tú. Las contraseñas se guardan cifradas.',
+    'Puedes descargar tus datos desde Ajustes › Seguridad y privacidad.',
   ]],
 };
 
@@ -471,7 +477,7 @@ function renderHelp(container, params) {
     <section class="card panel-card">
       <h2>Preguntas frecuentes</h2>
       <div class="accordion">
-        ${FAQ.map(([question, answer]) => `<details><summary>${escapeHtml(question)}</summary><p>${escapeHtml(answer)}</p></details>`).join('')}
+        ${FAQ.map(([question, answer]) => `<details><summary>${escapeHtml(question)}</summary><p>${escapeHtml(typeof answer === 'function' ? answer() : answer)}</p></details>`).join('')}
       </div>
     </section>
 
@@ -479,13 +485,13 @@ function renderHelp(container, params) {
       <h2>Normas y documentos legales</h2>
       <div class="accordion">
         ${Object.entries(LEGAL).map(([id, [title, items]]) => `
-          <details id="legal-${id}" ${openSection === id ? 'open' : ''}><summary>${escapeHtml(title)}</summary><ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></details>`).join('')}
+          <details id="legal-${id}" ${openSection === id ? 'open' : ''}><summary>${escapeHtml(title)}</summary><ul>${items.map((item) => `<li>${escapeHtml(typeof item === 'function' ? item() : item)}</li>`).join('')}</ul></details>`).join('')}
       </div>
     </section>
 
     <form id="support-form" class="card panel-card" novalidate>
       <h2>${icon('message')} Contactar con soporte</h2>
-      ${notice('Tu consulta se registrará solo en este navegador. La atención real por parte de un equipo de soporte requiere backend.')}
+      ${notice(usesDatabase() ? 'Tu consulta se guardará en la base de datos. Todavía no hay un equipo de soporte que la atienda.' : 'Tu consulta se registrará solo en este navegador. La atención real por parte de un equipo de soporte requiere backend.')}
       ${renderField({ name: 'reason', label: 'Tema', type: 'select', required: true, options: [['account', 'Mi cuenta'], ['listing', 'Mis anuncios'], ['order', 'Un pedido o reserva'], ['payment', 'Pagos'], ['other', 'Otro']] })}
       ${renderField({ name: 'details', label: 'Mensaje', type: 'textarea', required: true, maxLength: 1000, help: 'Mínimo 10 caracteres.' })}
       <div class="form-actions">

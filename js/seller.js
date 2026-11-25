@@ -15,7 +15,7 @@ import { bindOrderDetailButtons, orderList } from './orders.js';
 import { actions, select } from './store.js';
 import {
   avatar, backendBadge, badge, confirmDialog, emptyState, filterTabs, handleError, listingMini, listingStatusBadge, notice, openModal,
-  orderStatusBadge, panelSidebar, priceLabel, qs, qsa, renderField, sectionHeader, showFormErrors, stars, statCard, toast, withBusy,
+  orderStatusBadge, panelSidebar, priceLabel, qs, qsa, renderField, sectionHeader, showFormErrors, stars, statCard, toast, usesDatabase, withBusy,
 } from './ui.js';
 import { escapeHtml, formatDate, formatMoney, replaceHash, timeAgo } from './utils.js';
 import { renderListingWizard } from './wizard.js';
@@ -72,7 +72,7 @@ function renderOverview(container) {
         ${statCard({ label: 'Pendientes de revisión', value: stats.pendingReview, iconName: 'clock', tone: 'warning', href: '#/seller/listings?status=pending_review' })}
         ${statCard({ label: 'Vendidos', value: stats.sold, iconName: 'check', tone: 'success', href: '#/seller/listings?status=sold' })}
         ${statCard({ label: 'Alquilados', value: stats.rented, iconName: 'key', tone: 'accent', href: '#/seller/listings?status=rented' })}
-        ${statCard({ label: 'Visitas', value: stats.views.toLocaleString('es-ES'), iconName: 'eye', tone: 'info', hint: 'Contadas en este navegador' })}
+        ${statCard({ label: 'Visitas', value: stats.views.toLocaleString('es-ES'), iconName: 'eye', tone: 'info', hint: usesDatabase() ? 'De otras personas' : 'Contadas en este navegador' })}
         ${statCard({ label: 'Favoritos recibidos', value: stats.favoritesReceived, iconName: 'heart', tone: 'danger' })}
         ${statCard({ label: 'Pedidos pendientes', value: stats.pendingOrders, iconName: 'box', tone: 'warning', href: '#/seller/orders?status=pending' })}
         ${statCard({ label: 'Ventas completadas', value: stats.completedSales, iconName: 'bag', tone: 'success', href: '#/seller/revenue' })}

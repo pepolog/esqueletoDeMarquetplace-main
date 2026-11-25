@@ -1,94 +1,32 @@
 /**
  * api.js
  * ---------------------------------------------------------------------------
- * CAPA DE ACCESO A DATOS ("API" DE DEMOSTRACIÓN).
+ * CAPA DE ACCESO A DATOS.
  *
- * ⚠️  NO EXISTE UN SERVIDOR REAL. LocalApi simula en el navegador lo que en
- * producción haría un backend: genera identificadores, aplica las reglas de
- * negocio (no comprar tu propio anuncio, evitar pedidos duplicados, impedir
- * reservas solapadas…) y persiste los datos en LocalStorage.
+ * Hay dos implementaciones con los mismos métodos asíncronos:
+ *  - RemoteApi (remote-api.js): los datos viven en Neon (Postgres) y se usan
+ *    con la Data API. Las reglas de negocio se aplican en la base de datos
+ *    (RLS y funciones de db/schema.sql). Es la que se usa si APP_CONFIG.dataApiUrl
+ *    está configurada.
+ *  - LocalApi (este archivo): simula todo en el navegador con LocalStorage.
+ *    Se usa sin Data API configurada o abriendo la web con ?modo=local (por
+ *    ejemplo, en la prueba automática).
  *
- * Toda la interfaz habla con esta capa a través de métodos asíncronos que
- * devuelven promesas. Para conectar un backend basta con escribir una clase
- * con los mismos métodos que haga peticiones fetch() a una API REST (ver el
- * esqueleto RestApi al final del archivo) y cambiar la exportación `api`.
- *
- * Las reglas implementadas aquí deben repetirse en el servidor: cualquier
- * comprobación hecha en el navegador puede saltarse y no aporta seguridad.
+ * La interfaz no sabe cuál está activa: solo llama a `api` a través de store.js.
  */
 
-import { APP_CONFIG, buildSeedData, defaultUserPreferences, getCategory, OPEN_ORDER_STATUSES, ORDER_TRANSITIONS } from './data.js';
+import { APP_CONFIG, buildSeedData, defaultUserPreferences, OPEN_ORDER_STATUSES, ORDER_TRANSITIONS } from './data.js';
 import { validateListing } from './validation.js';
 import { createId, deepClone, safeStorage } from './utils.js';
-import { NeonAuthClient, NeonAuthError } from './neon-auth.js';
+import { NeonAuthClient } from './neon-auth.js';
+import {
+  ApiError, blockingBookings, bookingsOverlap, buildListingFields, computeRentalUnits, EMAIL_PATTERN, neonError, openSaleOrder,
+  passwordProblem, sameText, toTime, USERNAME_PATTERN, wait,
+} from './api-shared.js';
+import { RemoteApi } from './remote-api.js';
 
-/** Error de negocio con mensaje apto para mostrar al usuario. */
-export class ApiError extends Error {
-  constructor(message, code = 'error', details = null) {
-    super(message);
-    this.name = 'ApiError';
-    this.code = code;
-    this.details = details;
-  }
-}
-
-const wait = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
-
-/* --------------------------------------------------------------------------
-   Utilidades de reglas de negocio (exportadas para que la interfaz pueda
-   mostrar el mismo razonamiento antes de llamar a la API).
-   -------------------------------------------------------------------------- */
-
-/** Convierte una fecha «AAAA-MM-DD» o «AAAA-MM-DDTHH:mm» a milisegundos. */
-function toTime(value) {
-  return new Date(value.length <= 10 ? `${value}T00:00` : value).getTime();
-}
-
-/**
- * Calcula cuántas unidades de alquiler (horas, días, semanas, meses) abarca
- * un intervalo. Para periodos diarios o superiores el día de devolución no
- * cuenta (del 10 al 12 = 2 días), con un mínimo de 1 unidad.
- */
-export function computeRentalUnits(period, startDate, endDate) {
-  if (!startDate || !endDate) return 0;
-  const start = toTime(startDate);
-  const end = toTime(endDate);
-  if (Number.isNaN(start) || Number.isNaN(end) || end < start) return 0;
-  const hours = (end - start) / 3_600_000;
-  const days = Math.round(hours / 24);
-  switch (period) {
-    case 'hour': return Math.max(1, Math.ceil(hours));
-    case 'day': return Math.max(1, days);
-    case 'week': return Math.max(1, Math.ceil(days / 7));
-    case 'month': return Math.max(1, Math.ceil(days / 30));
-    default: return 0;
-  }
-}
-
-/** Intervalo [inicio, fin) en milisegundos. Una reserva de un solo día ocupa ese día completo. */
-function bookingInterval(order) {
-  const start = toTime(order.startDate);
-  let end = toTime(order.endDate);
-  if (end <= start) end = start + 86_400_000;
-  return [start, end];
-}
-
-/** ¿Se solapan dos reservas? */
-export function bookingsOverlap(a, b) {
-  const [aStart, aEnd] = bookingInterval(a);
-  const [bStart, bEnd] = bookingInterval(b);
-  return aStart < bEnd && bStart < aEnd;
-}
-
-/** Reservas confirmadas o en curso que bloquean el calendario de un anuncio. */
-export function blockingBookings(orders, listingId) {
-  return orders.filter((order) => order.listingId === listingId && order.operationType === 'rent' && ['confirmed', 'in_progress'].includes(order.status));
-}
-
-/** Pedido de venta abierto (reservado) para un anuncio, si existe. */
-export function openSaleOrder(orders, listingId) {
-  return orders.find((order) => order.listingId === listingId && order.operationType === 'sale' && OPEN_ORDER_STATUSES.includes(order.status)) ?? null;
-}
+// La interfaz importa estas utilidades desde api.js.
+export { ApiError, blockingBookings, bookingsOverlap, computeRentalUnits, openSaleOrder, passwordProblem };
 
 /* --------------------------------------------------------------------------
    Contraseñas y validación de cuentas
@@ -99,8 +37,6 @@ export function openSaleOrder(orders, listingId) {
    -------------------------------------------------------------------------- */
 
 const PASSWORD_ITERATIONS = 310_000;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const USERNAME_PATTERN = /^[a-z0-9_.]{3,20}$/;
 
 const toBase64 = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
 const fromBase64 = (text) => Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
@@ -128,15 +64,6 @@ async function verifyCredentials(credentials, password) {
   return difference === 0;
 }
 
-/** Devuelve el problema de una contraseña nueva o '' si es válida. */
-export function passwordProblem(password) {
-  const value = String(password ?? '');
-  if (value.length < APP_CONFIG.passwordMinLength) return `Usa al menos ${APP_CONFIG.passwordMinLength} caracteres.`;
-  if (value.length > 128) return 'La contraseña es demasiado larga (máximo 128 caracteres).';
-  if (!/[A-Za-zÀ-ÿ]/.test(value) || !/[0-9]/.test(value)) return 'Combina letras y números.';
-  return '';
-}
-
 /**
  * Tipos de cuenta:
  *  - remota (user.remote): creada en Neon Auth; Neon guarda y comprueba la contraseña.
@@ -144,36 +71,6 @@ export function passwordProblem(password) {
  *  - local (user.credentials): solo si Neon Auth no está configurado.
  */
 const isDemoAccount = (user) => !user.credentials && !user.remote;
-
-/** Traduce los errores de Neon Auth (Better Auth) a mensajes para el usuario. */
-function neonError(error, { context = 'login' } = {}) {
-  if (!(error instanceof NeonAuthError)) return error;
-  const fieldError = (field, message) => new ApiError('Revisa los campos marcados.', 'validation', { [field]: message });
-  switch (error.code) {
-    case 'NETWORK':
-      return new ApiError(`${error.message} Comprueba tu conexión e inténtalo de nuevo.`, 'network');
-    case 'INVALID_EMAIL_OR_PASSWORD':
-    case 'INVALID_EMAIL':
-      return context === 'login'
-        ? new ApiError('El correo, el usuario o la contraseña no son correctos.', 'invalid_credentials')
-        : fieldError('email', 'Introduce un correo electrónico válido.');
-    case 'USER_ALREADY_EXISTS':
-    case 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL':
-      return fieldError('email', 'Ya existe una cuenta con ese correo. Inicia sesión.');
-    case 'PASSWORD_TOO_SHORT':
-      return fieldError(context === 'password' ? 'newPassword' : 'password', `Usa al menos ${APP_CONFIG.passwordMinLength} caracteres.`);
-    case 'PASSWORD_TOO_LONG':
-      return fieldError(context === 'password' ? 'newPassword' : 'password', 'La contraseña es demasiado larga.');
-    case 'INVALID_PASSWORD':
-      return fieldError('currentPassword', 'La contraseña actual no es correcta.');
-    case 'EMAIL_NOT_VERIFIED':
-      return new ApiError('Tienes que verificar tu correo antes de entrar. Revisa tu bandeja de entrada.', 'email_not_verified');
-    default:
-      if (error.status === 429) return new ApiError('Demasiados intentos seguidos. Espera un momento y vuelve a probar.', 'rate_limited');
-      return new ApiError(`El servidor de cuentas no ha podido completar la operación (${error.message}).`, 'remote_error');
-  }
-}
-const sameText = (a, b) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
 
 /* ==========================================================================
    Implementación local
@@ -249,7 +146,21 @@ class LocalApi {
     const snapshot = deepClone(this.db);
     // Las credenciales nunca salen de la "API": la interfaz solo sabe si es una cuenta de prueba.
     snapshot.users = snapshot.users.map(({ credentials, ...user }) => ({ ...user, demo: isDemoAccount({ ...user, credentials }) }));
+    // Cuántas personas tienen cada anuncio en favoritos (en Neon llega ya calculado).
+    snapshot.listings.forEach((listing) => {
+      listing.favoriteCount = snapshot.favorites.filter((favorite) => favorite.listingId === listing.id).length;
+    });
     return snapshot;
+  }
+
+  /** Dónde se guardan los datos: 'local' (este navegador) o 'neon'. */
+  get dataSource() {
+    return 'local';
+  }
+
+  /** En local se pueden restablecer los datos de prueba desde el menú. */
+  get canResetDemo() {
+    return true;
   }
 
   /** Borra los datos locales y vuelve a generar los de prueba. */
@@ -565,57 +476,6 @@ class LocalApi {
 
   /* ------------------------------ Anuncios ------------------------------ */
 
-  /** Normaliza los datos del asistente al modelo de anuncio. */
-  #buildListingFields(data) {
-    const category = getCategory(data.category);
-    const attributes = {};
-    category.fields
-      .filter((field) => !field.showIf?.operationType || field.showIf.operationType === data.operationType)
-      .forEach((field) => {
-        const value = data.attributes?.[field.key];
-        if (field.type === 'checkbox') attributes[field.key] = Boolean(value);
-        else if (field.type === 'number') attributes[field.key] = value === '' || value === null || value === undefined ? null : Number(value);
-        else attributes[field.key] = value ?? '';
-      });
-    const delivery = {};
-    ['inPerson', 'shipping', 'pickup', 'agreed'].forEach((option) => {
-      delivery[option] = category.deliveryOptions.includes(option) && Boolean(data.delivery?.[option]);
-    });
-    return {
-      title: (data.title ?? '').trim(),
-      description: (data.description ?? '').trim(),
-      category: category.id,
-      subcategory: category.subcategoryField ? attributes[category.subcategoryField] || null : null,
-      operationType: data.operationType ?? category.operations[0],
-      price: data.price === '' || data.price === null || data.price === undefined ? null : Number(data.price),
-      currency: APP_CONFIG.currency,
-      rental: data.operationType === 'rent'
-        ? {
-          period: data.rental?.period ?? null,
-          minDuration: data.rental?.minDuration ? Number(data.rental.minDuration) : 1,
-          maxDuration: data.rental?.maxDuration ? Number(data.rental.maxDuration) : null,
-          requirements: (data.rental?.requirements ?? '').trim(),
-        }
-        : null,
-      condition: category.basic.condition ? data.condition || null : null,
-      brand: category.basic.brand ? (data.brand ?? '').trim() : '',
-      model: category.basic.model ? (data.model ?? '').trim() : '',
-      availability: (data.availability ?? '').trim(),
-      deliveryNotes: (data.deliveryNotes ?? '').trim(),
-      attributes,
-      customAttributes: category.allowCustomAttributes
-        ? (data.customAttributes ?? []).filter((item) => item.label?.trim() && item.value?.trim()).map((item) => ({ label: item.label.trim(), value: item.value.trim() }))
-        : [],
-      images: (data.images ?? []).map((image, index) => ({ id: image.id, src: image.src, alt: image.alt || `${data.title} — imagen ${index + 1}` })),
-      location: {
-        city: (data.location?.city ?? '').trim(),
-        postalCode: (data.location?.postalCode ?? '').trim(),
-        zone: (data.location?.zone ?? '').trim(),
-      },
-      delivery,
-    };
-  }
-
   /**
    * Crea un anuncio. status: 'active' (publicar) o 'draft' (borrador).
    * En producción un anuncio publicado podría pasar antes por moderación
@@ -628,7 +488,7 @@ class LocalApi {
     if (Object.keys(errors).length) throw new ApiError('Revisa los campos marcados antes de continuar.', 'validation', errors);
     return this.#mutate((db) => {
       const now = new Date().toISOString();
-      const fields = this.#buildListingFields(data);
+      const fields = buildListingFields(data);
       const listing = {
         id: createId('lst'),
         sellerId,
@@ -670,7 +530,7 @@ class LocalApi {
     if (Object.keys(errors).length) throw new ApiError('Revisa los campos marcados antes de continuar.', 'validation', errors);
     return this.#mutate((db) => {
       const listing = this.#ownedListing(db, actorId, listingId);
-      const fields = this.#buildListingFields(data);
+      const fields = buildListingFields(data);
       this.#trackPrice(listing, fields.price);
       Object.assign(listing, fields, { updatedAt: new Date().toISOString() });
       if (publish && listing.status === 'draft') listing.status = 'active';
@@ -932,27 +792,10 @@ class LocalApi {
 }
 
 /* ==========================================================================
-   Esqueleto para una futura API REST (NO SE UTILIZA en esta versión)
-   --------------------------------------------------------------------------
-   class RestApi {
-     constructor(baseUrl, getToken) { this.baseUrl = baseUrl; this.getToken = getToken; }
-     async #request(method, path, body) {
-       const response = await fetch(`${this.baseUrl}${path}`, {
-         method,
-         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.getToken()}` },
-         body: body ? JSON.stringify(body) : undefined,
-       });
-       const payload = await response.json().catch(() => null);
-       if (!response.ok) throw new ApiError(payload?.message ?? 'Error del servidor', payload?.code, payload?.details);
-       return payload;
-     }
-     createListing(_sellerId, data, { status }) { return this.#request('POST', '/listings', { ...data, status }); }
-     createOrder(_buyerId, body) { return this.#request('POST', '/orders', body); }
-     updateOrderStatus(_actorId, id, status) { return this.#request('PATCH', `/orders/${id}`, { status }); }
-     // …el resto de métodos con la misma firma que LocalApi.
-   }
-   El identificador del usuario (actorId) lo obtendría el servidor del token,
-   por lo que el primer parámetro de cada método se ignoraría.
+   Selección de la implementación
    ========================================================================== */
 
-export const api = new LocalApi();
+/** ?modo=local fuerza la versión local (sin base de datos), p. ej. para la prueba automática. */
+const forceLocal = new URLSearchParams(globalThis.location?.search ?? '').get('modo') === 'local';
+
+export const api = APP_CONFIG.dataApiUrl && !forceLocal ? new RemoteApi() : new LocalApi();

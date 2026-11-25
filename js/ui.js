@@ -186,6 +186,9 @@ export function orderStatusBadge(order) {
   return badge(info.label, info.tone);
 }
 
+/** true si los datos se guardan en la base de datos compartida (Neon); false si solo en este navegador. */
+export const usesDatabase = () => select.dataSource() === 'neon';
+
 /** Etiqueta «Requiere backend» para funciones que no pueden ser reales en esta versión. */
 export function backendBadge(text = 'Requiere backend') {
   return `<span class="badge badge--backend" title="Esta función necesita un servidor y no está operativa en la demostración">${icon('lock')}${escapeHtml(text)}</span>`;
@@ -445,13 +448,15 @@ export function filterTabs(tabs, activeId, ariaLabel) {
    Denuncias y avisos de problemas
    ========================================================================== */
 
-/** Formulario para denunciar un anuncio (se registra solo en local). */
+/** Formulario para denunciar un anuncio o comunicar un problema. */
 export function openReportDialog(listing = null) {
   const { element, close } = openModal({
     title: listing ? 'Denunciar anuncio' : 'Comunicar un problema',
     body: `
       <form id="report-form" novalidate>
-        ${notice('La denuncia se registra únicamente en este navegador. La revisión por un equipo de moderación requiere backend.')}
+        ${notice(usesDatabase()
+          ? 'La denuncia se guarda en la base de datos. Todavía no hay un equipo de moderación que la revise.'
+          : 'La denuncia se registra únicamente en este navegador. La revisión por un equipo de moderación requiere backend.')}
         ${listing ? `<p>Anuncio: <strong>${escapeHtml(listing.title)}</strong></p>` : ''}
         ${renderField({ name: 'reason', label: 'Motivo', type: 'select', required: true, options: listing
           ? [['fraud', 'Posible fraude o estafa'], ['prohibited', 'Artículo prohibido'], ['wrong_category', 'Categoría incorrecta'], ['offensive', 'Contenido ofensivo'], ['duplicate', 'Anuncio duplicado'], ['other', 'Otro motivo']]
@@ -472,7 +477,7 @@ export function openReportDialog(listing = null) {
       try {
         await actions.createReport({ type: listing ? 'listing' : 'problem', listingId: listing?.id ?? null, ...values });
         close();
-        toast('Gracias. Hemos registrado tu aviso (solo en este navegador).');
+        toast(usesDatabase() ? 'Gracias. Hemos registrado tu aviso.' : 'Gracias. Hemos registrado tu aviso (solo en este navegador).');
       } catch (error) { handleError(error); }
     });
   });

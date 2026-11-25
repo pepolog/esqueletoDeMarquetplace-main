@@ -5,8 +5,10 @@
  * (crear anuncios de cada tipo, editar/pausar, favoritos, pedidos entre
  * cuentas, solapes de reservas, persistencia tras recargar…).
  *
- * El servidor de cuentas (Neon Auth) se simula aquí mismo con page.route,
- * para no crear usuarios reales en la base de datos en cada ejecución.
+ * Se ejecuta en modo local (?modo=local): los datos se guardan en el
+ * navegador, así que la prueba no toca la base de datos de Neon. El servidor
+ * de cuentas (Neon Auth) se simula aquí mismo con page.route, para no crear
+ * usuarios reales en cada ejecución.
  *
  * Uso (con el servidor local arrancado en la raíz del repositorio):
  *   npm install --no-save playwright && npx playwright install chromium
@@ -127,7 +129,7 @@ async function createListing(o) {
   return href.split('/').pop();
 }
 
-await page.goto(BASE + '#/home');
+await page.goto(BASE + '?modo=local#/home');
 await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
 await page.reload();
 await page.waitForSelector('.listing-card');

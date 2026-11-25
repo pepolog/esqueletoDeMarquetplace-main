@@ -221,7 +221,8 @@ function updateHeader() {
 
   const panel = qs('#user-menu-panel');
   const wasOpen = !panel.hidden;
-  const resetItem = `<li><button type="button" id="reset-demo">${icon('refresh')}Restablecer datos de prueba</button></li>`;
+  // Con la base de datos compartida no se pueden restablecer los datos desde la web.
+  const resetItem = select.canResetDemo() ? `<li><button type="button" id="reset-demo">${icon('refresh')}Restablecer datos de prueba</button></li>` : '';
 
   if (!user) {
     panel.innerHTML = `
@@ -269,7 +270,7 @@ function updateHeader() {
       closeUserMenu();
     } catch (error) { handleError(error); }
   });
-  qs('#reset-demo', panel).addEventListener('click', async () => {
+  qs('#reset-demo', panel)?.addEventListener('click', async () => {
     closeUserMenu();
     const ok = await confirmDialog({ title: 'Restablecer datos de prueba', message: 'Se borrarán los anuncios, pedidos, mensajes, cuentas creadas y cambios guardados en este navegador y se cargarán de nuevo los datos iniciales.', confirmLabel: 'Restablecer', danger: true });
     if (!ok) return;
@@ -816,16 +817,26 @@ function renderNotFound(container) {
    Arranque
    ========================================================================== */
 
+/** Aviso superior: dónde se guardan los datos en esta versión. */
+function updateDemoBanner() {
+  const banner = qs('.demo-banner');
+  if (!banner) return;
+  banner.innerHTML = select.dataSource() === 'neon'
+    ? '<strong>Versión de prueba.</strong> Los datos se guardan en una base de datos compartida: lo que publiques lo verá cualquiera. No hay pagos reales.'
+    : '<strong>Modo local.</strong> Los anuncios, pedidos y mensajes se guardan solo en este navegador. No hay pagos reales.';
+}
+
 async function bootstrap() {
   injectIconSprite();
   qs('#footer-year').textContent = new Date().getFullYear();
   setupHeader();
   setupGlobalActions();
+  updateDemoBanner();
   try {
     await initStore();
   } catch (error) {
     console.error(error);
-    viewContainer().innerHTML = `<div class="container page">${emptyState({ iconName: 'alert', title: 'No se pudieron cargar los datos', text: 'Comprueba que el navegador permite LocalStorage e inténtalo de nuevo.' })}</div>`;
+    viewContainer().innerHTML = `<div class="container page">${emptyState({ iconName: 'alert', title: 'No se pudieron cargar los datos', text: select.dataSource() === 'neon' ? 'No se pudo conectar con la base de datos. Comprueba tu conexión y recarga la página.' : 'Comprueba que el navegador permite LocalStorage e inténtalo de nuevo.' })}</div>`;
     return;
   }
   let lastUserId = select.currentUserId();

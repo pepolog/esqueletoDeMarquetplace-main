@@ -10,7 +10,7 @@
  *    comprar, alquilar, guardar favoritos, enviar mensajes, denunciar o
  *    publicar se le vuelve a pedir que inicie sesión (requireLogin).
  *
- * ⚠️ Las cuentas se guardan en este navegador (ver api.js). Con un backend,
+ * Las cuentas se crean en Neon Auth (ver neon-auth.js y api.js). Si se cambia el proveedor,
  * solo cambian las llamadas de store.js/api.js: este cuadro sigue igual.
  */
 

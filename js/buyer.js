@@ -13,7 +13,7 @@ import { bindOrderDetailButtons, orderList } from './orders.js';
 import { actions, select } from './store.js';
 import {
   avatar, emptyState, filterTabs, handleError, listingCard, listingMini, navigate, notice, openModal, panelSidebar, priceLabel,
-  qs, qsa, sectionHeader, showFormErrors, statCard, toast, withBusy,
+  qs, qsa, sectionHeader, showFormErrors, statCard, toast, usesDatabase, withBusy,
 } from './ui.js';
 import { escapeHtml, formatDate, formatMoney, replaceHash, timeAgo, toIsoDate, todayIsoDate } from './utils.js';
 
@@ -235,7 +235,9 @@ function renderMessages(container, params) {
 
     container.innerHTML = `
       ${sectionHeader('Mensajes', 'Conversaciones con compradores y vendedores.')}
-      ${notice('Mensajería de demostración: los mensajes se guardan solo en este navegador. La mensajería real entre usuarios requiere backend. Cambia de cuenta de demostración para responder como la otra persona.')}
+      ${notice(usesDatabase()
+        ? 'Los mensajes se guardan en la base de datos: la otra persona los verá al entrar en su cuenta. Todavía no llegan en tiempo real: recarga la página para ver respuestas nuevas.'
+        : 'Mensajería de demostración: los mensajes se guardan solo en este navegador. La mensajería real entre usuarios requiere backend. Cambia de cuenta de demostración para responder como la otra persona.')}
       <div class="messenger card ${selected ? 'has-selection' : ''}">
         <div class="messenger__list" role="list" aria-label="Conversaciones">
           ${listItems.length ? listItems.map((conversation) => {
@@ -383,7 +385,9 @@ export function openPurchaseDialog(listing) {
         <div class="purchase-total" aria-live="polite" data-total></div>
         ${isRent && listing.attributes?.deposit ? `<p class="muted small">Fianza: ${formatMoney(listing.attributes.deposit)} (se gestiona aparte, no se incluye en el importe).</p>` : ''}
         ${category.rentNote && isRent ? `<p class="muted small">${escapeHtml(category.rentNote)}</p>` : ''}
-        ${notice('Demostración: no se realizará ningún cobro. El pedido se registra solo en este navegador y queda pendiente de que el vendedor lo acepte.')}
+        ${notice(usesDatabase()
+          ? 'Versión de prueba: no se realizará ningún cobro. El pedido queda pendiente de que el vendedor lo acepte.'
+          : 'Demostración: no se realizará ningún cobro. El pedido se registra solo en este navegador y queda pendiente de que el vendedor lo acepte.')}
         <div class="form-error" role="alert" data-form-error hidden></div>
       </form>`,
     footer: `<button type="button" class="btn btn--ghost" data-modal-close>Cancelar</button>
