@@ -116,7 +116,9 @@ export function openAuthDialog({ mode = 'login', reason = '', welcome = false } 
         ${loginForm()}
         ${registerForm()}
         ${demoAccounts()}
-        <p class="auth__local muted small">${icon('info', 'icon--xs')}Demostración: las cuentas se guardan solo en este navegador.</p>
+        <p class="auth__local muted small">${icon('info', 'icon--xs')}${select.usesRemoteAccounts()
+          ? 'Tu cuenta se guarda de forma segura en el servidor: podrás entrar desde cualquier navegador.'
+          : 'Demostración: las cuentas se guardan solo en este navegador.'}</p>
       </div>`,
     footer: current
       ? '<button type="button" class="btn btn--ghost" data-modal-close>Cancelar</button>'

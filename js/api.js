@@ -20,6 +20,7 @@
 import { APP_CONFIG, buildSeedData, defaultUserPreferences, getCategory, OPEN_ORDER_STATUSES, ORDER_TRANSITIONS } from './data.js';
 import { validateListing } from './validation.js';
 import { createId, deepClone, safeStorage } from './utils.js';
+import { NeonAuthClient, NeonAuthError } from './neon-auth.js';
 
 /** Error de negocio con mensaje apto para mostrar al usuario. */
 export class ApiError extends Error {
@@ -136,8 +137,42 @@ export function passwordProblem(password) {
   return '';
 }
 
-/** Las cuentas de prueba no tienen credenciales propias: usan APP_CONFIG.demoPassword. */
-const isDemoAccount = (user) => !user.credentials;
+/**
+ * Tipos de cuenta:
+ *  - remota (user.remote): creada en Neon Auth; Neon guarda y comprueba la contraseña.
+ *  - de prueba: sin credenciales, usa APP_CONFIG.demoPassword (Laura, Carlos…).
+ *  - local (user.credentials): solo si Neon Auth no está configurado.
+ */
+const isDemoAccount = (user) => !user.credentials && !user.remote;
+
+/** Traduce los errores de Neon Auth (Better Auth) a mensajes para el usuario. */
+function neonError(error, { context = 'login' } = {}) {
+  if (!(error instanceof NeonAuthError)) return error;
+  const fieldError = (field, message) => new ApiError('Revisa los campos marcados.', 'validation', { [field]: message });
+  switch (error.code) {
+    case 'NETWORK':
+      return new ApiError(`${error.message} Comprueba tu conexión e inténtalo de nuevo.`, 'network');
+    case 'INVALID_EMAIL_OR_PASSWORD':
+    case 'INVALID_EMAIL':
+      return context === 'login'
+        ? new ApiError('El correo, el usuario o la contraseña no son correctos.', 'invalid_credentials')
+        : fieldError('email', 'Introduce un correo electrónico válido.');
+    case 'USER_ALREADY_EXISTS':
+    case 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL':
+      return fieldError('email', 'Ya existe una cuenta con ese correo. Inicia sesión.');
+    case 'PASSWORD_TOO_SHORT':
+      return fieldError(context === 'password' ? 'newPassword' : 'password', `Usa al menos ${APP_CONFIG.passwordMinLength} caracteres.`);
+    case 'PASSWORD_TOO_LONG':
+      return fieldError(context === 'password' ? 'newPassword' : 'password', 'La contraseña es demasiado larga.');
+    case 'INVALID_PASSWORD':
+      return fieldError('currentPassword', 'La contraseña actual no es correcta.');
+    case 'EMAIL_NOT_VERIFIED':
+      return new ApiError('Tienes que verificar tu correo antes de entrar. Revisa tu bandeja de entrada.', 'email_not_verified');
+    default:
+      if (error.status === 429) return new ApiError('Demasiados intentos seguidos. Espera un momento y vuelve a probar.', 'rate_limited');
+      return new ApiError(`El servidor de cuentas no ha podido completar la operación (${error.message}).`, 'remote_error');
+  }
+}
 const sameText = (a, b) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
 
 /* ==========================================================================
@@ -151,6 +186,8 @@ class LocalApi {
     this.persistent = true;
     /** Usuario de demostración activo cuando no hay almacenamiento disponible. */
     this.memorySessionUserId = null;
+    /** Cliente de Neon Auth; null si no hay URL configurada (cuentas solo locales). */
+    this.remote = APP_CONFIG.neonAuthUrl ? new NeonAuthClient(APP_CONFIG.neonAuthUrl) : null;
   }
 
   /* ---------------------------- Persistencia ---------------------------- */
@@ -172,6 +209,7 @@ class LocalApi {
       this.db = buildSeedData();
       this.#persist();
     }
+    await this.#syncRemoteSession();
     return true;
   }
 
@@ -210,7 +248,7 @@ class LocalApi {
     await wait(APP_CONFIG.demoLatencyMs / 3);
     const snapshot = deepClone(this.db);
     // Las credenciales nunca salen de la "API": la interfaz solo sabe si es una cuenta de prueba.
-    snapshot.users = snapshot.users.map(({ credentials, ...user }) => ({ ...user, demo: !credentials }));
+    snapshot.users = snapshot.users.map(({ credentials, ...user }) => ({ ...user, demo: isDemoAccount({ ...user, credentials }) }));
     return snapshot;
   }
 
@@ -220,20 +258,31 @@ class LocalApi {
     this.db = buildSeedData();
     this.#persist();
     safeStorage.remove('sessionStorage', 'lonja.viewed');
-    // Las cuentas creadas se borran con los datos: si la sesión era de una de ellas, se cierra.
+    // Los perfiles locales se borran con los datos. Si hay sesión en Neon, se vuelve a crear el perfil.
     if (!(await this.getCurrentUserId())) this.#setSession(null);
+    await this.#syncRemoteSession();
     return true;
   }
 
   /* ------------------------------ Sesión -------------------------------- */
-  // ⚠️ DEMOSTRACIÓN: la sesión es el id del usuario guardado en LocalStorage.
-  // Un backend real emitiría un token (cookie HttpOnly o JWT) tras comprobar
-  // la contraseña en el servidor. Sin sesión, el visitante es un invitado.
+  // Cuentas reales: Neon Auth (contraseña y sesión en el servidor de Neon).
+  // Cuentas de prueba: locales, con la contraseña pública APP_CONFIG.demoPassword.
+  // Los anuncios, pedidos y mensajes siguen guardándose en este navegador, así
+  // que cada cuenta de Neon tiene aquí un "perfil local" con el mismo id.
+
+  /** true si las cuentas nuevas se crean en Neon Auth. */
+  get usesRemoteAccounts() {
+    return Boolean(this.remote);
+  }
 
   /** Id del usuario con sesión iniciada o null si navega como invitado. */
   async getCurrentUserId() {
+    return this.#currentUser()?.id ?? null;
+  }
+
+  #currentUser() {
     const stored = safeStorage.get('localStorage', APP_CONFIG.sessionKey) ?? this.memorySessionUserId;
-    return stored && this.db.users.some((user) => user.id === stored) ? stored : null;
+    return stored ? this.db.users.find((user) => user.id === stored) ?? null : null;
   }
 
   #setSession(userId) {
@@ -250,6 +299,71 @@ class LocalApi {
   }
 
   /**
+   * Crea o actualiza el perfil local de una cuenta de Neon. El id es el mismo
+   * que en neon_auth.user, para poder llevar después los datos al servidor.
+   */
+  #ensureRemoteProfile(remoteUser, { username = null, firstName = null, lastName = null } = {}) {
+    const existing = this.db.users.find((user) => user.id === remoteUser.id);
+    const [nameFirst = '', ...nameRest] = String(remoteUser.name ?? '').trim().split(/\s+/);
+    if (existing) {
+      existing.email = remoteUser.email;
+      existing.remote = true;
+      this.#persist();
+      return existing;
+    }
+    // Primer acceso desde este navegador: el nombre de usuario se deduce del correo si no se indicó.
+    let base = username ?? String(remoteUser.email).split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, '').slice(0, 16);
+    if (base.length < 3) base = `usuario${base}`;
+    let candidate = base;
+    for (let suffix = 2; this.db.users.some((user) => user.username === candidate); suffix += 1) candidate = `${base.slice(0, 16)}${suffix}`;
+    const profile = {
+      id: remoteUser.id,
+      username: candidate,
+      displayName: String(remoteUser.name ?? '').trim() || candidate,
+      firstName: firstName ?? nameFirst,
+      lastName: lastName ?? nameRest.join(' '),
+      email: remoteUser.email,
+      phone: '', birthDate: '', country: 'España', city: '', address: '',
+      avatar: null, bio: '', publicLocation: '',
+      role: 'user',
+      createdAt: remoteUser.createdAt ?? new Date().toISOString(),
+      preferences: defaultUserPreferences(),
+      remote: true,
+    };
+    this.db.users.push(profile);
+    this.#persist();
+    return profile;
+  }
+
+  /**
+   * Al arrancar: si hay sesión en Neon (cookie del servidor), esa es la
+   * cuenta activa. Si no la hay y la sesión local era de una cuenta de Neon,
+   * se pasa a invitado. Las cuentas de prueba no dependen de Neon.
+   */
+  async #syncRemoteSession() {
+    if (!this.remote) return;
+    let session;
+    try {
+      session = await this.remote.getSession();
+    } catch (error) {
+      console.warn('No se pudo comprobar la sesión de Neon Auth; se continúa con la sesión local.', error);
+      return;
+    }
+    if (session?.user) {
+      this.#ensureRemoteProfile(session.user);
+      this.#setSession(session.user.id);
+      return;
+    }
+    if (this.#currentUser()?.remote) this.#setSession(null);
+  }
+
+  /** Cierra la sesión de Neon si la hay (antes de entrar con otra cuenta). */
+  async #signOutRemote() {
+    if (!this.remote) return;
+    try { await this.remote.signOut(); } catch { /* sin sesión o sin red: no impide continuar */ }
+  }
+
+  /**
    * Entra con una cuenta de prueba sin escribir la contraseña (selector de
    * cuentas de demostración). Las cuentas creadas por el usuario no se pueden
    * usar así: exigen su contraseña.
@@ -258,26 +372,57 @@ class LocalApi {
     const user = this.db.users.find((candidate) => candidate.id === userId);
     if (!user) throw new ApiError('Usuario de demostración no encontrado.', 'not_found');
     if (!isDemoAccount(user)) throw new ApiError('Esta cuenta está protegida con contraseña. Inicia sesión para usarla.', 'forbidden');
+    if (this.#currentUser()?.remote) await this.#signOutRemote();
     this.#setSession(userId);
     return userId;
   }
 
   /** Inicia sesión con correo o nombre de usuario y contraseña. */
   async login({ identifier, password }) {
-    await wait(APP_CONFIG.demoLatencyMs);
     const errors = {};
-    if (!String(identifier ?? '').trim()) errors.identifier = 'Escribe tu correo o nombre de usuario.';
+    const id = String(identifier ?? '').trim();
+    if (!id) errors.identifier = 'Escribe tu correo o nombre de usuario.';
     if (!password) errors.password = 'Escribe tu contraseña.';
     if (Object.keys(errors).length) throw new ApiError('Completa los campos para entrar.', 'validation', errors);
-    const user = this.db.users.find((candidate) => sameText(candidate.email, identifier) || sameText(candidate.username, identifier));
-    const valid = user && (isDemoAccount(user) ? password === APP_CONFIG.demoPassword : await verifyCredentials(user.credentials, password));
-    // Mismo mensaje si el usuario no existe o la contraseña falla: no se revela qué cuentas existen.
-    if (!valid) throw new ApiError('El correo, el usuario o la contraseña no son correctos.', 'invalid_credentials');
-    this.#setSession(user.id);
-    return { id: user.id };
+    const user = this.db.users.find((candidate) => sameText(candidate.email, id) || sameText(candidate.username, id));
+
+    // Cuentas de prueba y cuentas locales antiguas: se comprueban en el navegador.
+    if (user && !user.remote && (isDemoAccount(user) || !this.remote)) {
+      await wait(APP_CONFIG.demoLatencyMs);
+      const valid = isDemoAccount(user) ? password === APP_CONFIG.demoPassword : await verifyCredentials(user.credentials, password);
+      if (!valid) throw new ApiError('El correo, el usuario o la contraseña no son correctos.', 'invalid_credentials');
+      await this.#signOutRemote();
+      this.#setSession(user.id);
+      return { id: user.id };
+    }
+    if (!this.remote) {
+      await wait(APP_CONFIG.demoLatencyMs);
+      throw new ApiError('El correo, el usuario o la contraseña no son correctos.', 'invalid_credentials');
+    }
+    if (user?.credentials) {
+      // Cuenta creada antes de conectar Neon: solo existe en este navegador.
+      const valid = await verifyCredentials(user.credentials, password);
+      if (!valid) throw new ApiError('El correo, el usuario o la contraseña no son correctos.', 'invalid_credentials');
+      await this.#signOutRemote();
+      this.#setSession(user.id);
+      return { id: user.id };
+    }
+
+    // Cuenta de Neon: con el nombre de usuario solo se puede entrar si este navegador ya la conoce.
+    const email = user?.email ?? id;
+    if (!EMAIL_PATTERN.test(email)) {
+      throw new ApiError('Para entrar desde este navegador por primera vez, escribe el correo de tu cuenta.', 'validation', { identifier: 'Escribe el correo con el que te registraste.' });
+    }
+    let result;
+    try {
+      result = await this.remote.signIn({ email: email.toLowerCase(), password });
+    } catch (error) { throw neonError(error, { context: 'login' }); }
+    this.#ensureRemoteProfile(result.user);
+    this.#setSession(result.user.id);
+    return { id: result.user.id };
   }
 
-  /** Crea una cuenta nueva y deja la sesión iniciada. */
+  /** Crea una cuenta nueva (en Neon si está configurado) y deja la sesión iniciada. */
   async register(data) {
     const values = {
       firstName: String(data.firstName ?? '').trim(),
@@ -304,6 +449,18 @@ class LocalApi {
       throw new ApiError('Revisa los campos marcados.', 'validation', errors);
     }
 
+    if (this.remote) {
+      await this.#signOutRemote();
+      let result;
+      try {
+        result = await this.remote.signUp({ name: `${values.firstName} ${values.lastName}`, email: values.email, password: values.password });
+      } catch (error) { throw neonError(error, { context: 'register' }); }
+      const profile = this.#ensureRemoteProfile(result.user, { username: values.username, firstName: values.firstName, lastName: values.lastName });
+      this.#setSession(profile.id);
+      return { id: profile.id };
+    }
+
+    // Sin Neon Auth configurado: cuenta solo en este navegador, con la contraseña cifrada (PBKDF2).
     const credentials = await createCredentials(values.password);
     const user = await this.#mutate((db) => {
       // Se vuelve a comprobar dentro de la escritura por si otra pestaña creó la misma cuenta.
@@ -332,7 +489,8 @@ class LocalApi {
   }
 
   async logout() {
-    await wait(APP_CONFIG.demoLatencyMs / 2);
+    if (this.#currentUser()?.remote) await this.#signOutRemote();
+    else await wait(APP_CONFIG.demoLatencyMs / 2);
     this.#setSession(null);
     return true;
   }
@@ -348,6 +506,13 @@ class LocalApi {
     if (problem) errors.newPassword = problem;
     else if (newPassword !== newPasswordConfirm) errors.newPasswordConfirm = 'Las contraseñas no coinciden.';
     if (Object.keys(errors).length) throw new ApiError('Revisa los campos marcados.', 'validation', errors);
+    if (user.remote) {
+      if (!this.remote) throw new ApiError('El servidor de cuentas no está configurado.', 'remote_error');
+      try {
+        await this.remote.changePassword({ currentPassword, newPassword });
+      } catch (error) { throw neonError(error, { context: 'password' }); }
+      return true;
+    }
     if (!(await verifyCredentials(user.credentials, currentPassword))) {
       throw new ApiError('La contraseña actual no es correcta.', 'validation', { currentPassword: 'La contraseña actual no es correcta.' });
     }
@@ -362,11 +527,16 @@ class LocalApi {
 
   async updateUser(actorId, userId, patch) {
     this.#assertUser(actorId);
-    return this.#mutate((db) => {
+    const before = this.db.users.find((candidate) => candidate.id === userId);
+    const previousName = before ? `${before.firstName} ${before.lastName}`.trim() : '';
+    const updated = await this.#mutate((db) => {
       if (actorId !== userId) throw new ApiError('Solo puedes modificar tu propio perfil.', 'forbidden');
       const user = db.users.find((candidate) => candidate.id === userId);
       if (!user) throw new ApiError('Usuario no encontrado.', 'not_found');
-      const forbiddenKeys = ['id', 'createdAt', 'role', 'credentials', 'demo'];
+      const forbiddenKeys = ['id', 'createdAt', 'role', 'credentials', 'demo', 'remote'];
+      if (user.remote && patch.email !== undefined && !sameText(patch.email, user.email)) {
+        throw new ApiError('El correo de una cuenta de Neon no se puede cambiar desde aquí todavía.', 'forbidden');
+      }
       if (patch.email !== undefined) {
         const email = String(patch.email).trim().toLowerCase();
         if (!EMAIL_PATTERN.test(email)) throw new ApiError('Introduce un correo electrónico válido.', 'validation');
@@ -385,6 +555,12 @@ class LocalApi {
       }
       return user;
     });
+    // Mantiene el nombre de la cuenta de Neon igual que el del perfil (si falla, el cambio local se conserva).
+    const newName = `${updated.firstName} ${updated.lastName}`.trim();
+    if (updated.remote && this.remote && newName && newName !== previousName) {
+      try { await this.remote.updateUser({ name: newName }); } catch (error) { console.warn('No se pudo actualizar el nombre en Neon Auth.', error); }
+    }
+    return updated;
   }
 
   /* ------------------------------ Anuncios ------------------------------ */

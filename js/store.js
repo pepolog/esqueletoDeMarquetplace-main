@@ -50,6 +50,8 @@ export const select = {
   isGuest: () => !state.currentUserId,
   /** false si el navegador no permite guardar datos (los cambios se pierden al recargar). */
   isPersistent: () => api.persistent,
+  /** true si las cuentas nuevas se guardan en Neon Auth (y no solo en el navegador). */
+  usesRemoteAccounts: () => api.usesRemoteAccounts,
   currentUser: () => state.db.users.find((user) => user.id === state.currentUserId) ?? null,
   users: () => state.db.users,
   /** Cuentas de prueba: se puede entrar en ellas sin escribir la contraseña. */

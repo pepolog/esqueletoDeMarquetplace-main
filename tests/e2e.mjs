@@ -5,6 +5,9 @@
  * (crear anuncios de cada tipo, editar/pausar, favoritos, pedidos entre
  * cuentas, solapes de reservas, persistencia tras recargar…).
  *
+ * El servidor de cuentas (Neon Auth) se simula aquí mismo con page.route,
+ * para no crear usuarios reales en la base de datos en cada ejecución.
+ *
  * Uso (con el servidor local arrancado en la raíz del repositorio):
  *   npm install --no-save playwright && npx playwright install chromium
  *   BASE_URL=http://localhost:8080/ node tests/e2e.mjs
@@ -16,10 +19,57 @@ const BASE = process.env.BASE_URL ?? 'http://localhost:8080/';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAEAAAAAwCAIAAAAuKetIAAAAQklEQVR4nO3PQQ0AIBDAMMC/5+OPAvYKkLzr1tm5+gT8AwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD8nQCpAAFeeZqUAAAAAElFTkSuQmCC', 'base64');
 const browser = await chromium.launch();
 const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
+
+// --- Neon Auth simulado (mismas rutas, códigos y respuestas que Managed Better Auth) ---
+const neon = { users: new Map(), sessionEmail: null };
+await context.route(/\.neonauth\..*\/auth\//, async (route) => {
+  const request = route.request();
+  const cors = {
+    'access-control-allow-origin': request.headers().origin ?? new URL(BASE).origin,
+    'access-control-allow-credentials': 'true',
+    'access-control-allow-headers': 'content-type',
+    'access-control-allow-methods': 'GET, POST, OPTIONS',
+  };
+  if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+  const json = (status, data) => route.fulfill({ status, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify(data) });
+  let body = {};
+  try { body = request.postDataJSON() ?? {}; } catch { body = {}; }
+  const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, emailVerified: false, createdAt: u.createdAt });
+  const current = neon.users.get(neon.sessionEmail);
+  switch (new URL(request.url()).pathname.replace(/^.*\/auth/, '')) {
+    case '/get-session': return json(200, current ? { user: publicUser(current), session: { id: 'ses_e2e', userId: current.id } } : null);
+    case '/sign-up/email': {
+      if (neon.users.has(body.email)) return json(422, { code: 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL', message: 'User already exists. Use another email.' });
+      if (String(body.password).length < 8) return json(400, { code: 'PASSWORD_TOO_SHORT', message: 'Password too short' });
+      const user = { id: crypto.randomUUID(), name: body.name, email: body.email, password: body.password, createdAt: new Date().toISOString() };
+      neon.users.set(body.email, user);
+      neon.sessionEmail = body.email;
+      return json(200, { token: 'tok', user: publicUser(user) });
+    }
+    case '/sign-in/email': {
+      const user = neon.users.get(body.email);
+      if (!user || user.password !== body.password) return json(401, { code: 'INVALID_EMAIL_OR_PASSWORD', message: 'Invalid email or password' });
+      neon.sessionEmail = body.email;
+      return json(200, { redirect: false, token: 'tok', user: publicUser(user) });
+    }
+    case '/sign-out': neon.sessionEmail = null; return json(200, { success: true });
+    case '/change-password': {
+      if (!current) return json(401, { code: 'UNAUTHORIZED', message: 'Unauthorized' });
+      if (current.password !== body.currentPassword) return json(400, { code: 'INVALID_PASSWORD', message: 'Invalid password' });
+      current.password = body.newPassword;
+      return json(200, { token: 'tok', user: publicUser(current) });
+    }
+    case '/update-user': if (current) current.name = body.name; return json(200, { status: true });
+    default: return json(404, { code: 'NOT_FOUND', message: 'Not found' });
+  }
+});
+
 const page = await context.newPage();
 const errors = [];
+// Las respuestas 401/422 esperadas (contraseña incorrecta, correo repetido) no cuentan como errores.
+const expectedHttpError = (text) => /Failed to load resource: the server responded with a status of (400|401|422)/.test(text);
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
+page.on('console', (m) => { if (m.type() === 'error' && !expectedHttpError(m.text())) errors.push(`console: ${m.text()}`); });
 const log = (...a) => console.log('✔', ...a);
 
 const go = async (hash) => { await page.evaluate((h) => { if (location.hash === h) window.dispatchEvent(new HashChangeEvent('hashchange')); else location.hash = h; }, hash); await page.waitForTimeout(300); };
@@ -164,8 +214,12 @@ assert.equal(await menuName(), 'Prueba Automática');
 assert.equal(await page.locator('#demo-user-switch option[value^="usr_"]').count(), 0, 'own account not in demo switcher');
 await page.click('#user-menu-trigger');
 const stored = await page.evaluate(() => localStorage.getItem('lonja.db.v1'));
-assert.ok(!stored.includes('secreta123') && stored.includes('PBKDF2-SHA256'), 'password stored hashed');
-log('   Registro con validaciones (campos, correo repetido, contraseñas) y contraseña cifrada');
+assert.ok(!stored.includes('secreta123'), 'password never stored in the browser');
+const localProfile = JSON.parse(stored).users.find((user) => user.email === 'prueba.e2e@example.com');
+assert.ok(localProfile.remote && !localProfile.credentials, 'local profile linked to the Neon account');
+assert.equal(neon.users.get('prueba.e2e@example.com')?.id, localProfile.id, 'account created in Neon Auth with the same id');
+assert.equal(neon.users.get('prueba.e2e@example.com').name, 'Prueba Automática');
+log('   Registro en Neon Auth con validaciones (campos, correo repetido, contraseñas); la contraseña no se guarda en el navegador');
 
 // Cambio de contraseña de la cuenta propia
 await go('#/settings/security');
@@ -179,9 +233,11 @@ await page.fill('#f-currentPassword', 'secreta123');
 await page.click('button[form="password-form"]');
 await page.waitForTimeout(800);
 assert.match(await page.locator('#toast-region').textContent(), /Contraseña actualizada/);
+assert.equal(neon.users.get('prueba.e2e@example.com').password, 'nueva12345', 'password changed in Neon');
 
 // Cerrar sesión e iniciarla de nuevo (contraseña incorrecta y correcta)
 await logoutNow();
+assert.equal(neon.sessionEmail, null, 'Neon session closed');
 assert.equal(new URL(page.url()).hash, '#/home', 'logout from private page goes home');
 await openLogin();
 await page.fill('#f-loginIdentifier', 'prueba.e2e@example.com');
@@ -196,11 +252,17 @@ await closedDialog();
 await openMenu();
 assert.equal(await menuName(), 'Prueba Automática');
 await page.click('#user-menu-trigger');
-// Tras recargar la sesión se mantiene
+// Tras recargar la sesión se mantiene, y se recupera de Neon aunque se borre la sesión local
 await page.reload();
 await page.waitForSelector('.listing-card');
 await openMenu();
 assert.equal(await menuName(), 'Prueba Automática');
+await page.click('#user-menu-trigger');
+await page.evaluate(() => localStorage.removeItem('lonja.session.v1'));
+await page.reload();
+await page.waitForSelector('.listing-card');
+await openMenu();
+assert.equal(await menuName(), 'Prueba Automática', 'session restored from Neon');
 await page.click('#user-menu-trigger');
 log('   Cierre de sesión, contraseña incorrecta rechazada, inicio con usuario y sesión persistente');
 

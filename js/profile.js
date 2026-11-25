@@ -67,13 +67,13 @@ function renderPersonal(container) {
   const user = select.currentUser();
   container.innerHTML = `
     ${sectionHeader('Datos personales', 'Información privada de tu cuenta. No se muestra en tu perfil público.')}
-    ${notice(`Datos de contacto guardados: ${escapeHtml(maskEmail(user.email))}${user.phone ? ` · ${escapeHtml(maskPhone(user.phone))}` : ''}. En una versión real, cambiar el correo exigiría verificarlo.`)}
+    ${notice(`Datos de contacto guardados: ${escapeHtml(maskEmail(user.email))}${user.phone ? ` · ${escapeHtml(maskPhone(user.phone))}` : ''}. ${user.remote ? 'El correo es el de tu cuenta en el servidor y de momento no se puede cambiar desde aquí.' : 'En una versión real, cambiar el correo exigiría verificarlo.'}`)}
     <form id="personal-form" class="card panel-card" novalidate>
       <div class="form-grid">
         ${renderField({ name: 'firstName', label: 'Nombre', value: user.firstName, required: true, maxLength: 50, autocomplete: 'given-name' })}
         ${renderField({ name: 'lastName', label: 'Apellidos', value: user.lastName, required: true, maxLength: 80, autocomplete: 'family-name' })}
         ${renderField({ name: 'username', label: 'Nombre de usuario', value: user.username, required: true, maxLength: 20, help: '3–20 caracteres: letras minúsculas, números, «_» o «.».', autocomplete: 'username' })}
-        ${renderField({ name: 'email', label: 'Correo electrónico', type: 'email', value: user.email, required: true, autocomplete: 'email' })}
+        ${renderField({ name: 'email', label: 'Correo electrónico', type: 'email', value: user.email, required: !user.remote, disabled: Boolean(user.remote), autocomplete: 'email', help: user.remote ? 'Es el correo con el que inicias sesión.' : '' })}
         ${renderField({ name: 'phone', label: 'Teléfono', type: 'tel', value: user.phone, autocomplete: 'tel', placeholder: '+34 600 000 000' })}
         ${renderField({ name: 'birthDate', label: 'Fecha de nacimiento (opcional)', type: 'date', value: user.birthDate, autocomplete: 'bday', help: 'Solo para verificar la mayoría de edad.' })}
         ${renderField({ name: 'country', label: 'País', type: 'select', value: user.country, options: COUNTRIES, required: true })}
@@ -89,6 +89,7 @@ function renderPersonal(container) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(form).entries());
     Object.keys(values).forEach((key) => { values[key] = values[key].trim(); });
+    if (user.remote) values.email = user.email; // campo bloqueado: no viaja en el formulario
     const errors = {};
     if (values.firstName.length < 2) errors.firstName = 'Indica tu nombre.';
     if (values.lastName.length < 2) errors.lastName = 'Indica tus apellidos.';
@@ -298,7 +299,9 @@ function renderSecurity(container) {
       <div class="panel-card__header"><h2>${icon('lock')} Cambiar contraseña</h2></div>
       ${user.demo
         ? notice(`Es una cuenta de prueba: su contraseña es pública (<code>${escapeHtml(APP_CONFIG.demoPassword)}</code>) y no se puede cambiar. Crea tu propia cuenta para usar una contraseña personal.`)
-        : `<p class="muted">Tu contraseña se guarda cifrada (PBKDF2) solo en este navegador. En una versión real se guardaría y comprobaría en el servidor.</p>`}
+        : user.remote
+          ? '<p class="muted">Tu contraseña la guarda cifrada y la comprueba el servidor de cuentas (Neon Auth). Nunca se guarda en este navegador.</p>'
+          : '<p class="muted">Esta cuenta se creó antes de conectar el servidor de cuentas: su contraseña se guarda cifrada (PBKDF2) solo en este navegador.</p>'}
       <form id="password-form" class="form-grid" novalidate ${user.demo ? 'aria-disabled="true"' : ''}>
         ${renderField({ name: 'currentPassword', label: 'Contraseña actual', type: 'password', disabled: user.demo, autocomplete: 'current-password', maxLength: 128 })}
         ${renderField({ name: 'newPassword', label: 'Nueva contraseña', type: 'password', disabled: user.demo, autocomplete: 'new-password', maxLength: 128, help: `Mínimo ${APP_CONFIG.passwordMinLength} caracteres, con letras y números.` })}
@@ -420,7 +423,7 @@ const FAQ = [
   ['¿Puedo reservar fechas que ya están ocupadas?', 'No. Si el vendedor ya ha confirmado una reserva en esas fechas, la plataforma rechaza la solicitud. Las solicitudes pendientes no bloquean el calendario hasta que se confirman.'],
   ['¿Necesito una cuenta?', 'Para mirar anuncios y perfiles, no: puedes navegar como invitado. Para comprar, alquilar, guardar favoritos, enviar mensajes o publicar, sí. Créala desde «Crear cuenta» en el menú de usuario; solo pide nombre, usuario, correo y contraseña.'],
   ['¿Cómo pruebo la compra y la venta entre usuarios?', `Desde el menú de usuario puedes cambiar de cuenta de demostración (contraseña de todas: ${APP_CONFIG.demoPassword}). Por ejemplo, crea un pedido como Laura y acéptalo después como el vendedor.`],
-  ['¿Dónde se guardan mis datos?', 'En esta versión, solo en el almacenamiento local de tu navegador. Si borras los datos del sitio, se pierden. No introduzcas información sensible.'],
+  ['¿Dónde se guardan mis datos?', 'Tu cuenta (nombre, correo y contraseña cifrada) se guarda en el servidor, así que puedes entrar desde cualquier navegador. Los anuncios, pedidos, mensajes y el resto del perfil, de momento, solo en el almacenamiento local de este navegador: si borras los datos del sitio, se pierden. No introduzcas información sensible.'],
 ];
 
 const LEGAL = {

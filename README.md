@@ -6,7 +6,7 @@ Este es un comienzo o unas bases para seguir con este proyecto.
 
 Prototipo navegable de una plataforma para **comprar, vender y alquilar** artículos de segunda mano, coches, motos, viviendas y habitaciones desde una misma aplicación.
 
-> **Importante:** es una **demostración 100 % local**. No hay servidor, pagos ni mensajería reales. Las cuentas (registro e inicio de sesión) funcionan, pero se guardan solo en el `LocalStorage` del navegador, igual que el resto de datos.
+> **Importante:** las **cuentas son reales**: se guardan en [Neon](https://neon.com) con Neon Auth (Managed Better Auth), en la tabla `neon_auth.user`. El resto (anuncios, pedidos, mensajes, favoritos y perfil ampliado) sigue siendo una **demostración local** guardada en el `LocalStorage` del navegador. No hay pagos ni mensajería reales.
 
 ---
 
@@ -34,6 +34,12 @@ GitHub Pages solo publica gratis repositorios **públicos**. Si el repositorio e
 
 **Restablecer los datos:** menú de usuario (avatar arriba a la derecha) › *Restablecer datos de prueba*.
 
+### Cuentas en Neon (Neon Auth)
+
+- La URL de Neon Auth está en `APP_CONFIG.neonAuthUrl` (`js/data.js`). No es un secreto. Si se deja vacía, las cuentas vuelven a guardarse solo en el navegador.
+- El dominio desde el que se sirve la web debe estar en los **dominios de confianza** de Neon Auth (*Neon Console › Auth › Configuration › Domains*). Ahora están `https://pepolog.github.io` y `localhost` (permitido mientras *Allow localhost* esté activado).
+- Para ver los usuarios registrados: *Neon Console › SQL Editor* › `SELECT id, name, email, "createdAt" FROM neon_auth."user";`
+
 ### Prueba automática de los escenarios (opcional)
 
 ```bash
@@ -55,6 +61,7 @@ esqueletoDeMarquetplace/
 └── js/
     ├── app.js          Arranque, enrutado por hash, cabecera, inicio, explorar, categorías, detalle y perfil público
     ├── auth.js         Cuadro de acceso (iniciar sesión / crear cuenta / seguir como invitado) y permisos de invitado
+    ├── neon-auth.js    Cliente mínimo de Neon Auth (registro, inicio y cierre de sesión, cambio de contraseña)
     ├── data.js         Configuración, categorías + esquema de campos dinámicos, estados y DATOS DE PRUEBA
     ├── api.js          "API" local: reglas de negocio + persistencia en LocalStorage (sustituible por REST)
     ├── store.js        Única fuente de datos de la interfaz: selectores (datos derivados) y acciones
@@ -135,7 +142,8 @@ Incluye 27 anuncios variados (todos distintos, con ilustraciones SVG generadas l
 - Cuadro de acceso al abrir la página (no ocupa toda la pantalla; en móvil sale desde abajo) con pestañas «Iniciar sesión» y «Crear cuenta», acceso a las cuentas de prueba y botón «Seguir como invitado».
 - Registro con nombre, apellidos, usuario, correo, contraseña repetida y aceptación de condiciones. Correo y usuario únicos; contraseña de 8 caracteres como mínimo con letras y números.
 - Inicio de sesión con correo o nombre de usuario. Si falla, el mensaje no dice si existe la cuenta.
-- Las contraseñas se guardan cifradas con PBKDF2-SHA256 (Web Crypto, sal aleatoria), nunca en texto plano. La sesión se mantiene al recargar.
+- Las cuentas nuevas se crean en **Neon Auth**: Neon cifra y comprueba la contraseña y guarda la sesión en una cookie segura de su dominio (`HttpOnly; Secure; SameSite=None; Partitioned`). La web nunca guarda la contraseña. Se puede entrar con la misma cuenta desde cualquier navegador.
+- Cada cuenta de Neon tiene en el navegador un perfil local con el mismo id que en `neon_auth.user`, que es donde se apoyan sus anuncios y pedidos (todavía locales). Si se entra desde un navegador nuevo, el nombre de usuario se deduce del correo.
 - Menú de usuario con «Iniciar sesión», «Crear cuenta», «Iniciar sesión con otra cuenta» y «Cerrar sesión». Cambio de contraseña en *Ajustes › Seguridad* para las cuentas propias.
 - **Permisos de invitado:** puede ver inicio, búsqueda, categorías, anuncios, perfiles públicos y la ayuda. Para comprar, alquilar, guardar favoritos, enviar mensajes, denunciar, publicar o entrar en los paneles y ajustes se le muestra el cuadro de acceso. La API local rechaza esas acciones sin sesión (`auth_required`). Los perfiles marcados como «Solo usuarios registrados» no se muestran a invitados.
 
@@ -193,9 +201,10 @@ Están señaladas en la interfaz con la etiqueta **«Requiere backend»** o con 
 
 | Función | Estado en esta versión |
 |---|---|
-| Registro, inicio y cierre de sesión | Funcionan, pero las cuentas solo existen en este navegador y la comprobación se hace en el cliente |
-| Cambio de contraseña | Funciona en local para las cuentas creadas (las de prueba usan `demo1234`) |
-| Verificación de correo y recuperación de contraseña | No disponibles |
+| Registro, inicio y cierre de sesión | **Reales**, con Neon Auth. Las 5 cuentas de prueba siguen siendo locales (`demo1234`) |
+| Cambio de contraseña | Real en Neon para las cuentas creadas |
+| Verificación de correo y recuperación de contraseña | No activadas (Neon Auth las admite; ver mejoras) |
+| Perfil ampliado (usuario, teléfono, ciudad, bio, foto) | Solo en este navegador; en Neon se guardan nombre y correo |
 | Gestión de sesiones y dispositivos | Solo se muestra la sesión actual |
 | Eliminación definitiva de la cuenta | Deshabilitado |
 | Persistencia compartida entre usuarios y dispositivos | Solo en el navegador actual |
@@ -216,7 +225,7 @@ Todas las validaciones del navegador (propietario, transiciones, solapes…) **d
 Comprobados de forma automática con `tests/e2e.mjs` (sin errores de consola):
 
 - Cuadro de acceso al abrir la página (una vez por pestaña), seguir como invitado y ver que favoritos, compras y secciones privadas piden iniciar sesión.
-- Crear una cuenta (errores por campo, correo repetido, contraseñas distintas o cortas), comprobar que la contraseña se guarda cifrada, cambiarla, cerrar sesión, rechazar una contraseña incorrecta, entrar con el nombre de usuario y mantener la sesión al recargar.
+- Crear una cuenta en Neon Auth (simulado dentro de la prueba para no llenar la base de datos): errores por campo, correo repetido, contraseñas distintas o cortas, la contraseña nunca se guarda en el navegador, cambio de contraseña, cierre de sesión también en Neon, contraseña incorrecta rechazada, entrada con el nombre de usuario, sesión mantenida al recargar y recuperada desde Neon.
 - Entrar en una cuenta de prueba con correo + `demo1234` y con el selector de demostración.
 - Crear un anuncio de ropa y encontrarlo en su categoría, en la búsqueda y en «Mis anuncios».
 - Crear un coche en venta (sin campos de alquiler) y otro en alquiler (con edad mínima, antigüedad del permiso, fianza, seguro, límite de km y condiciones de recogida).
@@ -235,7 +244,7 @@ Comprobados de forma automática con `tests/e2e.mjs` (sin errores de consola):
 ## 8. Mejoras propuestas para una segunda versión
 
 1. **Backend y base de datos** (p. ej. Node/NestJS o Django + PostgreSQL) implementando `RestApi` con las mismas reglas de `LocalApi`, transacciones y bloqueo de disponibilidad en el servidor.
-2. **Autenticación en el servidor**: llevar el registro y el inicio de sesión actuales a un backend (correo + contraseña con bcrypt/argon2 o un proveedor como Neon Auth), sesión con cookie HttpOnly, verificación de correo y teléfono, recuperación de contraseña y roles (usuario, moderador, administrador).
+2. **Datos en Neon**: activar la Data API de Neon y llevar perfiles, anuncios, pedidos, favoritos y mensajes a tablas con políticas RLS ligadas al usuario de Neon Auth (el id del perfil local ya coincide con `neon_auth.user.id`). Después: verificación de correo, recuperación de contraseña y roles (usuario, moderador, administrador).
 3. **Pagos** con un proveedor (Stripe Connect, Adyen…) con pago retenido hasta la entrega, fianzas, reembolsos y facturación.
 4. **Imágenes** en almacenamiento de objetos con CDN, miniaturas y moderación automática.
 5. **Mensajería en tiempo real** (WebSockets), notificaciones push y por correo, alertas de búsqueda guardadas.

@@ -31,6 +31,13 @@ export const APP_CONFIG = {
    * guarda cifrada (PBKDF2) en este navegador.
    */
   demoPassword: 'demo1234',
+  /**
+   * URL de Neon Auth (Managed Better Auth) de la rama «production» del proyecto
+   * de Neon. Las cuentas nuevas se crean ahí (tabla neon_auth.user). No es un
+   * secreto: es la dirección pública del servicio. Déjala vacía ('') para que
+   * las cuentas se guarden solo en el navegador, como en la primera versión.
+   */
+  neonAuthUrl: 'https://ep-plain-voice-za40eyd4.neonauth.c-2.eu-west-2.aws.neon.tech/neondb/auth',
   passwordMinLength: 8,
   /** Latencia simulada de la "API" local, para que se vean los indicadores de carga. */
   demoLatencyMs: 180,
