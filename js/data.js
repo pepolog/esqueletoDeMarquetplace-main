@@ -23,6 +23,15 @@ export const APP_CONFIG = {
   /** Clave de LocalStorage. Cambiar la versión fuerza la recarga de los datos de prueba. */
   storageKey: 'trato.db.v1',
   sessionKey: 'trato.session.v1',
+  /** Marca de sessionStorage: el cuadro de bienvenida (login) ya se mostró en esta pestaña. */
+  authPromptKey: 'trato.authPrompted',
+  /**
+   * Contraseña pública de las cuentas de prueba (Laura, Carlos, Marta…).
+   * Las cuentas creadas desde «Crear cuenta» usan su propia contraseña, que se
+   * guarda cifrada (PBKDF2) en este navegador.
+   */
+  demoPassword: 'demo1234',
+  passwordMinLength: 8,
   /** Latencia simulada de la "API" local, para que se vean los indicadores de carga. */
   demoLatencyMs: 180,
   /** Comisión de la plataforma usada para las estimaciones del vendedor (0.05 = 5 %). */
@@ -341,6 +350,14 @@ export function placeholderImage({ label, hue = 215, iconName = 'box', variant =
    datos, para que los filtros por fecha tengan sentido en cualquier momento.
    ========================================================================== */
 
+/** Preferencias iniciales de cualquier cuenta (de prueba o creada por el usuario). */
+export function defaultUserPreferences() {
+  return {
+    notifications: { messages: true, newOrders: true, saleStatus: true, favoritePriceDrops: true, listingAlerts: false, platformUpdates: false, channel: 'email' },
+    privacy: { profileVisibility: 'public', showCity: true, showJoinDate: true, showRating: true, allowMessagesFrom: 'everyone' },
+  };
+}
+
 export function buildSeedData() {
   const now = Date.now();
   const DAY = 86_400_000;
@@ -351,10 +368,7 @@ export function buildSeedData() {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   };
 
-  const defaultPreferences = () => ({
-    notifications: { messages: true, newOrders: true, saleStatus: true, favoritePriceDrops: true, listingAlerts: false, platformUpdates: false, channel: 'email' },
-    privacy: { profileVisibility: 'public', showCity: true, showJoinDate: true, showRating: true, allowMessagesFrom: 'everyone' },
-  });
+  const defaultPreferences = defaultUserPreferences;
 
   const users = [
     {

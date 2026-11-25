@@ -4,15 +4,17 @@
  * Perfil de usuario y ajustes: datos personales, foto de perfil, perfil
  * público, seguridad y privacidad, notificaciones, y ayuda y soporte.
  *
- * Las funciones que necesitan un servidor (cambio de contraseña, gestión
- * real de sesiones, eliminación definitiva de la cuenta, envío de
- * notificaciones) se muestran deshabilitadas y marcadas como «Requiere backend».
+ * Las funciones que necesitan un servidor (gestión real de sesiones,
+ * eliminación definitiva de la cuenta, envío de notificaciones) se muestran
+ * deshabilitadas y marcadas como «Requiere backend». El cambio de contraseña
+ * funciona en local para las cuentas creadas desde «Crear cuenta».
  */
 
 import { APP_CONFIG } from './data.js';
 import { icon } from './icons.js';
 import { processImageFile, validateImageFile } from './media.js';
 import { actions, select } from './store.js';
+import { ApiError } from './api.js';
 import {
   avatar, backendBadge, confirmDialog, handleError, notice, openModal, openReportDialog, panelSidebar, qs, renderField, sectionHeader,
   showFormErrors, stars, toast, withBusy,
@@ -293,13 +295,16 @@ function renderSecurity(container) {
     ${sectionHeader('Seguridad y privacidad', 'Controla el acceso a tu cuenta y quién puede ver o contactar contigo.')}
 
     <section class="card panel-card">
-      <div class="panel-card__header"><h2>${icon('lock')} Cambiar contraseña</h2>${backendBadge()}</div>
-      <p class="muted">Esta demostración no tiene autenticación y <strong>no almacena contraseñas</strong>. El cambio de contraseña requiere un servidor que guarde las credenciales cifradas.</p>
-      <form class="form-grid" aria-disabled="true">
-        ${renderField({ name: 'currentPassword', label: 'Contraseña actual', type: 'password', disabled: true, autocomplete: 'current-password' })}
-        ${renderField({ name: 'newPassword', label: 'Nueva contraseña', type: 'password', disabled: true, autocomplete: 'new-password' })}
+      <div class="panel-card__header"><h2>${icon('lock')} Cambiar contraseña</h2></div>
+      ${user.demo
+        ? notice(`Es una cuenta de prueba: su contraseña es pública (<code>${escapeHtml(APP_CONFIG.demoPassword)}</code>) y no se puede cambiar. Crea tu propia cuenta para usar una contraseña personal.`)
+        : `<p class="muted">Tu contraseña se guarda cifrada (PBKDF2) solo en este navegador. En una versión real se guardaría y comprobaría en el servidor.</p>`}
+      <form id="password-form" class="form-grid" novalidate ${user.demo ? 'aria-disabled="true"' : ''}>
+        ${renderField({ name: 'currentPassword', label: 'Contraseña actual', type: 'password', disabled: user.demo, autocomplete: 'current-password', maxLength: 128 })}
+        ${renderField({ name: 'newPassword', label: 'Nueva contraseña', type: 'password', disabled: user.demo, autocomplete: 'new-password', maxLength: 128, help: `Mínimo ${APP_CONFIG.passwordMinLength} caracteres, con letras y números.` })}
+        ${renderField({ name: 'newPasswordConfirm', label: 'Repite la nueva contraseña', type: 'password', disabled: user.demo, autocomplete: 'new-password', maxLength: 128 })}
       </form>
-      <div class="form-actions"><button type="button" class="btn btn--primary" disabled>Actualizar contraseña</button></div>
+      <div class="form-actions"><button type="submit" form="password-form" class="btn btn--primary" ${user.demo ? 'disabled' : ''}>Actualizar contraseña</button></div>
     </section>
 
     <section class="card panel-card">
@@ -333,6 +338,24 @@ function renderSecurity(container) {
       <p class="muted small">Si solo quieres empezar de cero en esta demostración, usa «Restablecer datos de prueba» en el menú de usuario.</p>
       <button type="button" class="btn btn--danger" disabled>Solicitar eliminación de la cuenta</button>
     </section>`;
+
+  const passwordForm = qs('#password-form', container);
+  passwordForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (user.demo) return;
+    showFormErrors(passwordForm, {});
+    const values = Object.fromEntries(new FormData(passwordForm).entries());
+    await withBusy(qs('button[form="password-form"]', container), async () => {
+      try {
+        await actions.changePassword(values);
+        passwordForm.reset();
+        toast('Contraseña actualizada.');
+      } catch (error) {
+        if (error instanceof ApiError && error.details) showFormErrors(passwordForm, error.details);
+        else handleError(error);
+      }
+    });
+  });
 
   const form = qs('#privacy-form', container);
   form.addEventListener('submit', async (event) => {
@@ -395,7 +418,8 @@ const FAQ = [
   ['¿Qué diferencia hay entre vender y alquilar?', 'En una venta el artículo cambia de propietario y deja de estar disponible cuando se completa el pedido. En un alquiler indicas un precio por hora, día, semana o mes y los interesados solicitan fechas concretas.'],
   ['¿Cómo funciona una compra en esta demostración?', 'Al confirmar un pedido se crea una operación pendiente vinculada al anuncio, visible tanto en tu panel de comprador como en el panel del vendedor. No se realiza ningún pago.'],
   ['¿Puedo reservar fechas que ya están ocupadas?', 'No. Si el vendedor ya ha confirmado una reserva en esas fechas, la plataforma rechaza la solicitud. Las solicitudes pendientes no bloquean el calendario hasta que se confirman.'],
-  ['¿Cómo pruebo la compra y la venta entre usuarios?', 'Desde el menú de usuario puedes cambiar de cuenta de demostración. Por ejemplo, crea un pedido como Laura y acéptalo después como el vendedor.'],
+  ['¿Necesito una cuenta?', 'Para mirar anuncios y perfiles, no: puedes navegar como invitado. Para comprar, alquilar, guardar favoritos, enviar mensajes o publicar, sí. Créala desde «Crear cuenta» en el menú de usuario; solo pide nombre, usuario, correo y contraseña.'],
+  ['¿Cómo pruebo la compra y la venta entre usuarios?', `Desde el menú de usuario puedes cambiar de cuenta de demostración (contraseña de todas: ${APP_CONFIG.demoPassword}). Por ejemplo, crea un pedido como Laura y acéptalo después como el vendedor.`],
   ['¿Dónde se guardan mis datos?', 'En esta versión, solo en el almacenamiento local de tu navegador. Si borras los datos del sitio, se pierden. No introduzcas información sensible.'],
 ];
 

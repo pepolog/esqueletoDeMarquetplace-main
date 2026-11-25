@@ -73,9 +73,18 @@ export function toast(message, { tone = 'success', timeout = 4200 } = {}) {
   setTimeout(() => element.remove(), timeout + 300);
 }
 
+let authRequiredHandler = null;
+
+/** Registra qué hacer cuando la API pide iniciar sesión (auth.js abre el cuadro de acceso). */
+export function setAuthRequiredHandler(handler) {
+  authRequiredHandler = handler;
+}
+
 /** Muestra un error de la API (mensaje de negocio) o uno genérico si es inesperado. */
 export function handleError(error) {
-  if (error instanceof ApiError) {
+  if (error instanceof ApiError && error.code === 'auth_required' && authRequiredHandler) {
+    authRequiredHandler(error.message);
+  } else if (error instanceof ApiError) {
     toast(error.message, { tone: 'error', timeout: 6000 });
   } else {
     console.error(error);
@@ -193,6 +202,7 @@ const AVATAR_HUES = [215, 262, 340, 160, 28, 190, 120];
 /** Avatar del usuario: foto si existe o iniciales sobre un color estable. */
 export function avatar(user, size = 'md') {
   if (!user) return `<span class="avatar avatar--${size}" aria-hidden="true">?</span>`;
+  if (user === 'guest') return `<span class="avatar avatar--${size} avatar--guest" aria-hidden="true">${icon('user')}</span>`;
   if (user.avatar) return `<img class="avatar avatar--${size}" src="${escapeHtml(user.avatar)}" alt="" />`;
   const hue = AVATAR_HUES[[...user.id].reduce((sum, char) => sum + char.charCodeAt(0), 0) % AVATAR_HUES.length];
   return `<span class="avatar avatar--${size}" style="--avatar-hue:${hue}" aria-hidden="true">${escapeHtml(initials(user.displayName))}</span>`;

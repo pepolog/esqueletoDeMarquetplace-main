@@ -77,10 +77,152 @@ async function createListing(o) {
   return href.split('/').pop();
 }
 
-await page.goto(BASE);
-await page.evaluate(() => localStorage.clear());
 await page.goto(BASE + '#/home');
+await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+await page.reload();
 await page.waitForSelector('.listing-card');
+
+// --- 0. Acceso: cuadro al abrir, invitado, registro, inicio y cierre de sesión ---
+const authDialog = '.auth-dialog';
+const closedDialog = () => page.waitForSelector(authDialog, { state: 'detached' });
+const openMenu = async () => { if (await page.locator('#user-menu-panel').isHidden()) await page.click('#user-menu-trigger'); };
+const menuName = async () => (await page.locator('#user-menu-panel .user-menu__header strong').textContent()).trim();
+async function logoutNow() {
+  await openMenu();
+  await page.click('#user-menu-panel [data-logout]');
+  await page.waitForTimeout(400);
+  await openMenu();
+  assert.equal(await menuName(), 'Invitado');
+  await page.click('#user-menu-trigger');
+}
+async function openLogin() {
+  await openMenu();
+  await page.click('#user-menu-panel .user-menu__auth [data-auth-open="login"]');
+  await page.waitForSelector(authDialog);
+}
+async function fillRegister(values) {
+  for (const [name, value] of Object.entries(values)) {
+    if (name === 'regAcceptTerms') { if (value) await page.check('#f-regAcceptTerms'); else await page.uncheck('#f-regAcceptTerms'); }
+    else await page.fill(`#f-${name}`, value);
+  }
+  await page.click('#auth-register button[type="submit"]');
+  await page.waitForTimeout(500);
+}
+
+await page.waitForSelector(authDialog);
+assert.match(await page.locator(`${authDialog} .modal__title`).textContent(), /bienvenida/i);
+assert.ok(await page.locator('#auth-login').isVisible(), 'login tab shown first');
+await page.click('[data-guest]');
+await closedDialog();
+await openMenu();
+assert.equal(await menuName(), 'Invitado');
+await page.click('#user-menu-trigger');
+assert.equal(await page.locator('.count-dot:not([hidden])').count(), 0, 'guest has no counters');
+// Al recargar en la misma pestaña no vuelve a salir el cuadro
+await page.reload();
+await page.waitForSelector('.listing-card');
+await page.waitForTimeout(400);
+assert.equal(await page.locator(authDialog).count(), 0, 'welcome dialog only once per tab');
+// Un invitado puede ver un anuncio pero no guardarlo ni comprarlo
+await page.locator('.listing-card .fav-btn').first().click();
+await page.waitForSelector(authDialog);
+assert.match(await page.locator(`${authDialog} [data-auth-reason]`).textContent(), /favoritos/);
+await page.keyboard.press('Escape');
+await closedDialog();
+await go('#/listing/lst_010');
+assert.ok(await page.locator('.detail__guest-hint').count(), 'guest hint on listing');
+await page.click('[data-buy]');
+await page.waitForSelector(authDialog);
+assert.equal(await page.locator('#purchase-form').count(), 0, 'no purchase form for guests');
+await page.keyboard.press('Escape');
+await closedDialog();
+// Sección privada: aviso + cuadro de acceso
+await go('#/sell');
+assert.match(await page.locator('#view').textContent(), /Inicia sesión para continuar/);
+await page.waitForSelector(authDialog);
+log('0. Cuadro de acceso al abrir, modo invitado y secciones protegidas');
+
+// Registro: validaciones, correo repetido y alta correcta
+await page.click('#auth-tab-register');
+await page.click('#auth-register button[type="submit"]');
+await page.waitForTimeout(400);
+for (const name of ['regFirstName', 'regLastName', 'regUsername', 'regEmail', 'regPassword', 'regAcceptTerms']) {
+  assert.ok(await page.locator(`#f-${name}[aria-invalid="true"]`).count(), `${name} invalid`);
+}
+const newAccount = { regFirstName: 'Prueba', regLastName: 'Automática', regUsername: 'pruebae2e', regEmail: 'prueba.e2e@example.com', regPassword: 'secreta123', regPasswordConfirm: 'secreta123', regAcceptTerms: true };
+await fillRegister({ ...newAccount, regEmail: 'laura.martin@example.com' });
+assert.match(await page.locator('#auth-register').textContent(), /Ya existe una cuenta con ese correo/);
+await fillRegister({ ...newAccount, regPasswordConfirm: 'otra12345' });
+assert.match(await page.locator('#auth-register').textContent(), /no coinciden/);
+await fillRegister({ ...newAccount, regPassword: 'corta', regPasswordConfirm: 'corta' });
+assert.match(await page.locator('#auth-register').textContent(), /al menos 8/);
+await fillRegister(newAccount);
+await closedDialog();
+await page.waitForSelector('.wizard');
+await openMenu();
+assert.equal(await menuName(), 'Prueba Automática');
+assert.equal(await page.locator('#demo-user-switch option[value^="usr_"]').count(), 0, 'own account not in demo switcher');
+await page.click('#user-menu-trigger');
+const stored = await page.evaluate(() => localStorage.getItem('trato.db.v1'));
+assert.ok(!stored.includes('secreta123') && stored.includes('PBKDF2-SHA256'), 'password stored hashed');
+log('   Registro con validaciones (campos, correo repetido, contraseñas) y contraseña cifrada');
+
+// Cambio de contraseña de la cuenta propia
+await go('#/settings/security');
+await page.fill('#f-currentPassword', 'incorrecta1');
+await page.fill('#f-newPassword', 'nueva12345');
+await page.fill('#f-newPasswordConfirm', 'nueva12345');
+await page.click('button[form="password-form"]');
+await page.waitForTimeout(600);
+assert.ok(await page.locator('#f-currentPassword[aria-invalid="true"]').count(), 'wrong current password');
+await page.fill('#f-currentPassword', 'secreta123');
+await page.click('button[form="password-form"]');
+await page.waitForTimeout(800);
+assert.match(await page.locator('#toast-region').textContent(), /Contraseña actualizada/);
+
+// Cerrar sesión e iniciarla de nuevo (contraseña incorrecta y correcta)
+await logoutNow();
+assert.equal(new URL(page.url()).hash, '#/home', 'logout from private page goes home');
+await openLogin();
+await page.fill('#f-loginIdentifier', 'prueba.e2e@example.com');
+await page.fill('#f-loginPassword', 'secreta123');
+await page.click('#auth-login button[type="submit"]');
+await page.waitForTimeout(800);
+assert.match(await page.locator('#auth-login [data-auth-error]').textContent(), /no son correctos/);
+await page.fill('#f-loginIdentifier', 'PruebaE2E');
+await page.fill('#f-loginPassword', 'nueva12345');
+await page.click('#auth-login button[type="submit"]');
+await closedDialog();
+await openMenu();
+assert.equal(await menuName(), 'Prueba Automática');
+await page.click('#user-menu-trigger');
+// Tras recargar la sesión se mantiene
+await page.reload();
+await page.waitForSelector('.listing-card');
+await openMenu();
+assert.equal(await menuName(), 'Prueba Automática');
+await page.click('#user-menu-trigger');
+log('   Cierre de sesión, contraseña incorrecta rechazada, inicio con usuario y sesión persistente');
+
+// Entrar con una cuenta de prueba: correo + contraseña pública y selector
+await logoutNow();
+await openLogin();
+await page.fill('#f-loginIdentifier', 'carlos.ruiz@example.com');
+await page.fill('#f-loginPassword', 'demo1234');
+await page.click('#auth-login button[type="submit"]');
+await closedDialog();
+await openMenu();
+assert.equal(await menuName(), 'Carlos Ruiz');
+await page.click('#user-menu-panel [data-auth-open="login"]');
+await page.waitForSelector(authDialog);
+await page.click('.auth__demo summary');
+await page.selectOption('#auth-demo-user', 'u1');
+await page.click('[data-demo-login]');
+await closedDialog();
+await openMenu();
+assert.equal(await menuName(), 'Laura M.');
+await page.click('#user-menu-trigger');
+log('   Cuentas de prueba: correo + contraseña pública y selector de demostración');
 
 // --- Validación del asistente ---
 await go('#/sell');

@@ -17,7 +17,7 @@
  * comprobación hecha en el navegador puede saltarse y no aporta seguridad.
  */
 
-import { APP_CONFIG, buildSeedData, getCategory, OPEN_ORDER_STATUSES, ORDER_TRANSITIONS } from './data.js';
+import { APP_CONFIG, buildSeedData, defaultUserPreferences, getCategory, OPEN_ORDER_STATUSES, ORDER_TRANSITIONS } from './data.js';
 import { validateListing } from './validation.js';
 import { createId, deepClone, safeStorage } from './utils.js';
 
@@ -89,6 +89,57 @@ export function openSaleOrder(orders, listingId) {
   return orders.find((order) => order.listingId === listingId && order.operationType === 'sale' && OPEN_ORDER_STATUSES.includes(order.status)) ?? null;
 }
 
+/* --------------------------------------------------------------------------
+   Contraseñas y validación de cuentas
+   ⚠️ DEMOSTRACIÓN: las cuentas viven solo en este navegador. La contraseña se
+   guarda cifrada con PBKDF2 (nunca en texto plano), pero cualquiera con acceso
+   al navegador puede leer LocalStorage. En producción el registro, el inicio
+   de sesión y el cifrado (bcrypt/argon2) deben hacerse en el servidor.
+   -------------------------------------------------------------------------- */
+
+const PASSWORD_ITERATIONS = 310_000;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const USERNAME_PATTERN = /^[a-z0-9_.]{3,20}$/;
+
+const toBase64 = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+const fromBase64 = (text) => Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
+
+/** Deriva el hash de una contraseña con PBKDF2-SHA256 (Web Crypto). */
+async function derivePasswordHash(password, salt, iterations = PASSWORD_ITERATIONS) {
+  if (!globalThis.crypto?.subtle) {
+    throw new ApiError('Este navegador no permite cifrar contraseñas en esta página. Ábrela con https:// o desde localhost.', 'crypto_unavailable');
+  }
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256);
+  return toBase64(bits);
+}
+
+async function createCredentials(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  return { algorithm: 'PBKDF2-SHA256', iterations: PASSWORD_ITERATIONS, salt: toBase64(salt), hash: await derivePasswordHash(password, salt) };
+}
+
+async function verifyCredentials(credentials, password) {
+  const hash = await derivePasswordHash(password, fromBase64(credentials.salt), credentials.iterations);
+  // Comparación en tiempo constante (buena práctica aunque aquí todo sea local).
+  let difference = hash.length ^ credentials.hash.length;
+  for (let index = 0; index < Math.min(hash.length, credentials.hash.length); index += 1) difference |= hash.charCodeAt(index) ^ credentials.hash.charCodeAt(index);
+  return difference === 0;
+}
+
+/** Devuelve el problema de una contraseña nueva o '' si es válida. */
+export function passwordProblem(password) {
+  const value = String(password ?? '');
+  if (value.length < APP_CONFIG.passwordMinLength) return `Usa al menos ${APP_CONFIG.passwordMinLength} caracteres.`;
+  if (value.length > 128) return 'La contraseña es demasiado larga (máximo 128 caracteres).';
+  if (!/[A-Za-zÀ-ÿ]/.test(value) || !/[0-9]/.test(value)) return 'Combina letras y números.';
+  return '';
+}
+
+/** Las cuentas de prueba no tienen credenciales propias: usan APP_CONFIG.demoPassword. */
+const isDemoAccount = (user) => !user.credentials;
+const sameText = (a, b) => String(a ?? '').trim().toLowerCase() === String(b ?? '').trim().toLowerCase();
+
 /* ==========================================================================
    Implementación local
    ========================================================================== */
@@ -157,7 +208,10 @@ class LocalApi {
   /** Devuelve una copia de todas las colecciones (equivale a varios GET). */
   async getSnapshot() {
     await wait(APP_CONFIG.demoLatencyMs / 3);
-    return deepClone(this.db);
+    const snapshot = deepClone(this.db);
+    // Las credenciales nunca salen de la "API": la interfaz solo sabe si es una cuenta de prueba.
+    snapshot.users = snapshot.users.map(({ credentials, ...user }) => ({ ...user, demo: !credentials }));
+    return snapshot;
   }
 
   /** Borra los datos locales y vuelve a generar los de prueba. */
@@ -166,39 +220,166 @@ class LocalApi {
     this.db = buildSeedData();
     this.#persist();
     safeStorage.remove('sessionStorage', 'trato.viewed');
+    // Las cuentas creadas se borran con los datos: si la sesión era de una de ellas, se cierra.
+    if (!(await this.getCurrentUserId())) this.#setSession(null);
     return true;
   }
 
   /* ------------------------------ Sesión -------------------------------- */
-  // ⚠️ DEMOSTRACIÓN: no hay autenticación. El "usuario actual" es un
-  // identificador guardado en LocalStorage que se puede cambiar libremente.
+  // ⚠️ DEMOSTRACIÓN: la sesión es el id del usuario guardado en LocalStorage.
+  // Un backend real emitiría un token (cookie HttpOnly o JWT) tras comprobar
+  // la contraseña en el servidor. Sin sesión, el visitante es un invitado.
 
+  /** Id del usuario con sesión iniciada o null si navega como invitado. */
   async getCurrentUserId() {
     const stored = safeStorage.get('localStorage', APP_CONFIG.sessionKey) ?? this.memorySessionUserId;
-    return this.db.users.some((user) => user.id === stored) ? stored : 'u1';
+    return stored && this.db.users.some((user) => user.id === stored) ? stored : null;
   }
 
-  async switchDemoUser(userId) {
-    if (!this.db.users.some((user) => user.id === userId)) throw new ApiError('Usuario de demostración no encontrado.');
+  #setSession(userId) {
     this.memorySessionUserId = userId;
-    safeStorage.set('localStorage', APP_CONFIG.sessionKey, userId);
+    if (userId) safeStorage.set('localStorage', APP_CONFIG.sessionKey, userId);
+    else safeStorage.remove('localStorage', APP_CONFIG.sessionKey);
+  }
+
+  /** Comprueba que hay un usuario identificado antes de una acción que lo requiere. */
+  #assertUser(actorId) {
+    if (!actorId || !this.db.users.some((user) => user.id === actorId)) {
+      throw new ApiError('Inicia sesión o crea una cuenta para continuar.', 'auth_required');
+    }
+  }
+
+  /**
+   * Entra con una cuenta de prueba sin escribir la contraseña (selector de
+   * cuentas de demostración). Las cuentas creadas por el usuario no se pueden
+   * usar así: exigen su contraseña.
+   */
+  async switchDemoUser(userId) {
+    const user = this.db.users.find((candidate) => candidate.id === userId);
+    if (!user) throw new ApiError('Usuario de demostración no encontrado.', 'not_found');
+    if (!isDemoAccount(user)) throw new ApiError('Esta cuenta está protegida con contraseña. Inicia sesión para usarla.', 'forbidden');
+    this.#setSession(userId);
     return userId;
+  }
+
+  /** Inicia sesión con correo o nombre de usuario y contraseña. */
+  async login({ identifier, password }) {
+    await wait(APP_CONFIG.demoLatencyMs);
+    const errors = {};
+    if (!String(identifier ?? '').trim()) errors.identifier = 'Escribe tu correo o nombre de usuario.';
+    if (!password) errors.password = 'Escribe tu contraseña.';
+    if (Object.keys(errors).length) throw new ApiError('Completa los campos para entrar.', 'validation', errors);
+    const user = this.db.users.find((candidate) => sameText(candidate.email, identifier) || sameText(candidate.username, identifier));
+    const valid = user && (isDemoAccount(user) ? password === APP_CONFIG.demoPassword : await verifyCredentials(user.credentials, password));
+    // Mismo mensaje si el usuario no existe o la contraseña falla: no se revela qué cuentas existen.
+    if (!valid) throw new ApiError('El correo, el usuario o la contraseña no son correctos.', 'invalid_credentials');
+    this.#setSession(user.id);
+    return { id: user.id };
+  }
+
+  /** Crea una cuenta nueva y deja la sesión iniciada. */
+  async register(data) {
+    const values = {
+      firstName: String(data.firstName ?? '').trim(),
+      lastName: String(data.lastName ?? '').trim(),
+      username: String(data.username ?? '').trim().toLowerCase(),
+      email: String(data.email ?? '').trim().toLowerCase(),
+      password: String(data.password ?? ''),
+      passwordConfirm: String(data.passwordConfirm ?? ''),
+      acceptTerms: Boolean(data.acceptTerms),
+    };
+    const errors = {};
+    if (values.firstName.length < 2) errors.firstName = 'Indica tu nombre.';
+    if (values.lastName.length < 2) errors.lastName = 'Indica tus apellidos.';
+    if (!USERNAME_PATTERN.test(values.username)) errors.username = 'Entre 3 y 20 caracteres en minúscula: letras, números, «_» o «.».';
+    else if (this.db.users.some((user) => user.username === values.username)) errors.username = 'Ese nombre de usuario ya está en uso.';
+    if (!EMAIL_PATTERN.test(values.email)) errors.email = 'Introduce un correo electrónico válido.';
+    else if (this.db.users.some((user) => sameText(user.email, values.email))) errors.email = 'Ya existe una cuenta con ese correo. Inicia sesión.';
+    const problem = passwordProblem(values.password);
+    if (problem) errors.password = problem;
+    else if (values.password !== values.passwordConfirm) errors.passwordConfirm = 'Las contraseñas no coinciden.';
+    if (!values.acceptTerms) errors.acceptTerms = 'Debes aceptar las condiciones para crear la cuenta.';
+    if (Object.keys(errors).length) {
+      await wait(APP_CONFIG.demoLatencyMs);
+      throw new ApiError('Revisa los campos marcados.', 'validation', errors);
+    }
+
+    const credentials = await createCredentials(values.password);
+    const user = await this.#mutate((db) => {
+      // Se vuelve a comprobar dentro de la escritura por si otra pestaña creó la misma cuenta.
+      if (db.users.some((other) => other.username === values.username || sameText(other.email, values.email))) {
+        throw new ApiError('Ese correo o nombre de usuario acaba de registrarse. Prueba con otro.', 'conflict');
+      }
+      const newUser = {
+        id: createId('usr'),
+        username: values.username,
+        displayName: `${values.firstName} ${values.lastName}`,
+        firstName: values.firstName,
+        lastName: values.lastName,
+        email: values.email,
+        phone: '', birthDate: '', country: 'España', city: '', address: '',
+        avatar: null, bio: '', publicLocation: '',
+        role: 'user',
+        createdAt: new Date().toISOString(),
+        preferences: defaultUserPreferences(),
+        credentials,
+      };
+      db.users.push(newUser);
+      return { id: newUser.id };
+    });
+    this.#setSession(user.id);
+    return user;
+  }
+
+  async logout() {
+    await wait(APP_CONFIG.demoLatencyMs / 2);
+    this.#setSession(null);
+    return true;
+  }
+
+  /** Cambia la contraseña de una cuenta propia (las de prueba usan la contraseña pública). */
+  async changePassword(actorId, { currentPassword, newPassword, newPasswordConfirm }) {
+    this.#assertUser(actorId);
+    const user = this.db.users.find((candidate) => candidate.id === actorId);
+    if (isDemoAccount(user)) throw new ApiError('Las cuentas de prueba usan una contraseña pública que no se puede cambiar.', 'forbidden');
+    const errors = {};
+    if (!currentPassword) errors.currentPassword = 'Escribe tu contraseña actual.';
+    const problem = passwordProblem(newPassword);
+    if (problem) errors.newPassword = problem;
+    else if (newPassword !== newPasswordConfirm) errors.newPasswordConfirm = 'Las contraseñas no coinciden.';
+    if (Object.keys(errors).length) throw new ApiError('Revisa los campos marcados.', 'validation', errors);
+    if (!(await verifyCredentials(user.credentials, currentPassword))) {
+      throw new ApiError('La contraseña actual no es correcta.', 'validation', { currentPassword: 'La contraseña actual no es correcta.' });
+    }
+    const credentials = await createCredentials(newPassword);
+    return this.#mutate((db) => {
+      db.users.find((candidate) => candidate.id === actorId).credentials = credentials;
+      return true;
+    });
   }
 
   /* ------------------------------ Usuarios ------------------------------ */
 
   async updateUser(actorId, userId, patch) {
+    this.#assertUser(actorId);
     return this.#mutate((db) => {
       if (actorId !== userId) throw new ApiError('Solo puedes modificar tu propio perfil.', 'forbidden');
       const user = db.users.find((candidate) => candidate.id === userId);
       if (!user) throw new ApiError('Usuario no encontrado.', 'not_found');
-      const forbiddenKeys = ['id', 'createdAt', 'role'];
+      const forbiddenKeys = ['id', 'createdAt', 'role', 'credentials', 'demo'];
+      if (patch.email !== undefined) {
+        const email = String(patch.email).trim().toLowerCase();
+        if (!EMAIL_PATTERN.test(email)) throw new ApiError('Introduce un correo electrónico válido.', 'validation');
+        // El correo sirve para iniciar sesión: no puede repetirse entre cuentas.
+        if (db.users.some((other) => other.id !== userId && sameText(other.email, email))) throw new ApiError('Ese correo ya está registrado en otra cuenta.', 'conflict');
+        patch = { ...patch, email };
+      }
       Object.entries(patch).forEach(([key, value]) => {
         if (!forbiddenKeys.includes(key)) user[key] = value;
       });
       if (patch.username !== undefined) {
         const username = String(patch.username).trim().toLowerCase();
-        if (!/^[a-z0-9_.]{3,20}$/.test(username)) throw new ApiError('El nombre de usuario debe tener entre 3 y 20 caracteres (letras, números, «_» o «.»).', 'validation');
+        if (!USERNAME_PATTERN.test(username)) throw new ApiError('El nombre de usuario debe tener entre 3 y 20 caracteres (letras, números, «_» o «.»).', 'validation');
         if (db.users.some((other) => other.id !== userId && other.username === username)) throw new ApiError('Ese nombre de usuario ya está en uso.', 'conflict');
         user.username = username;
       }
@@ -265,6 +446,7 @@ class LocalApi {
    * ('pending_review'); en la demo se aprueba automáticamente.
    */
   async createListing(sellerId, data, { status = 'active' } = {}) {
+    this.#assertUser(sellerId);
     const mode = status === 'draft' ? 'draft' : 'publish';
     const errors = validateListing(data, { mode });
     if (Object.keys(errors).length) throw new ApiError('Revisa los campos marcados antes de continuar.', 'validation', errors);
@@ -305,6 +487,7 @@ class LocalApi {
 
   /** Actualiza un anuncio completo desde el asistente. publish=true convierte un borrador en activo. */
   async updateListing(actorId, listingId, data, { publish = false } = {}) {
+    this.#assertUser(actorId);
     const current = this.db.listings.find((candidate) => candidate.id === listingId);
     const mode = publish || (current && current.status !== 'draft') ? 'publish' : 'draft';
     const errors = validateListing(data, { mode });
@@ -321,6 +504,7 @@ class LocalApi {
 
   /** Cambio rápido de precio desde «Mis anuncios». */
   async changeListingPrice(actorId, listingId, newPrice) {
+    this.#assertUser(actorId);
     const price = Number(newPrice);
     if (!Number.isFinite(price) || price <= 0) throw new ApiError('Introduce un precio mayor que cero.', 'validation');
     return this.#mutate((db) => {
@@ -334,6 +518,7 @@ class LocalApi {
 
   /** Cambia el estado de publicación (pausar, reactivar, vender, alquilar, finalizar). */
   async changeListingStatus(actorId, listingId, nextStatus) {
+    this.#assertUser(actorId);
     const allowed = {
       active: ['paused', 'sold', 'rented', 'finished'],
       paused: ['active', 'finished'],
@@ -366,6 +551,7 @@ class LocalApi {
    * conservan y siguen pudiendo mostrar el artículo al que se refieren.
    */
   async deleteListing(actorId, listingId) {
+    this.#assertUser(actorId);
     return this.#mutate((db) => {
       const listing = this.#ownedListing(db, actorId, listingId);
       const hasOpenOrders = db.orders.some((order) => order.listingId === listingId && OPEN_ORDER_STATUSES.includes(order.status));
@@ -389,6 +575,7 @@ class LocalApi {
   /* ----------------------------- Favoritos ------------------------------ */
 
   async toggleFavorite(userId, listingId) {
+    this.#assertUser(userId);
     return this.#mutate((db) => {
       const existing = db.favorites.find((favorite) => favorite.userId === userId && favorite.listingId === listingId);
       if (existing) {
@@ -411,6 +598,7 @@ class LocalApi {
    * fechas válidas y sin solapes con reservas confirmadas.
    */
   async createOrder(buyerId, { listingId, startDate = null, endDate = null, deliveryMethod, notes = '' }) {
+    this.#assertUser(buyerId);
     return this.#mutate((db) => {
       const listing = db.listings.find((candidate) => candidate.id === listingId && !candidate.deletedAt);
       if (!listing) throw new ApiError('El anuncio ya no está disponible.', 'not_found');
@@ -463,6 +651,7 @@ class LocalApi {
 
   /** Cambia el estado de un pedido respetando el rol (comprador/vendedor) y las transiciones permitidas. */
   async updateOrderStatus(actorId, orderId, nextStatus) {
+    this.#assertUser(actorId);
     return this.#mutate((db) => {
       const order = db.orders.find((candidate) => candidate.id === orderId);
       if (!order) throw new ApiError('Pedido no encontrado.', 'not_found');
@@ -494,6 +683,7 @@ class LocalApi {
   /* ----------------------------- Valoraciones --------------------------- */
 
   async createReview(reviewerId, { orderId, rating, comment }) {
+    this.#assertUser(reviewerId);
     return this.#mutate((db) => {
       const order = db.orders.find((candidate) => candidate.id === orderId);
       if (!order || order.buyerId !== reviewerId) throw new ApiError('Solo el comprador puede valorar este pedido.', 'forbidden');
@@ -518,6 +708,7 @@ class LocalApi {
    * (WebSockets o similar) para llegar al otro usuario.
    */
   async sendMessage(senderId, { listingId, receiverId, content }) {
+    this.#assertUser(senderId);
     const text = String(content ?? '').trim();
     if (!text) throw new ApiError('Escribe un mensaje.', 'validation');
     if (text.length > 1000) throw new ApiError('El mensaje no puede superar los 1000 caracteres.', 'validation');
@@ -540,6 +731,7 @@ class LocalApi {
   }
 
   async markConversationRead(userId, conversationId) {
+    this.#assertUser(userId);
     return this.#mutate((db) => {
       db.messages.forEach((message) => {
         if (message.conversationId === conversationId && message.receiverId === userId) message.read = true;
@@ -552,6 +744,7 @@ class LocalApi {
 
   /** Registra localmente una denuncia o consulta. No se envía a ningún equipo de soporte. */
   async createReport(userId, { type, listingId = null, reason, details }) {
+    this.#assertUser(userId);
     if (!reason) throw new ApiError('Selecciona un motivo.', 'validation');
     if (String(details ?? '').trim().length < 10) throw new ApiError('Describe el problema con al menos 10 caracteres.', 'validation');
     return this.#mutate((db) => {

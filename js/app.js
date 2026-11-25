@@ -24,6 +24,7 @@ import { isFieldVisible } from './validation.js';
 import { renderSellerPanel } from './seller.js';
 import { openPurchaseDialog, renderBuyerPanel } from './buyer.js';
 import { renderSettings } from './profile.js';
+import { logout, openAuthDialog, promptLoginOnFirstVisit, requireLogin } from './auth.js';
 
 /* ==========================================================================
    Enrutado
@@ -52,18 +53,20 @@ function resolveRoute({ segments, params }) {
     case 'categories': return { nav: 'categories', title: 'Categorías', render: (el) => renderCategories(el) };
     case 'listing': return { nav: 'explore', title: 'Anuncio', render: (el) => renderListingDetail(el, second) };
     case 'user': return { nav: second === select.currentUserId() ? 'profile' : 'explore', title: 'Perfil', render: (el) => renderPublicProfile(el, second) };
-    case 'profile': return { nav: 'profile', title: 'Mi perfil', render: (el) => renderPublicProfile(el, select.currentUserId()) };
-    case 'favorites': return { nav: 'favorites', title: 'Favoritos', render: (el) => renderBuyerPanel(el, 'favorites', params) };
-    case 'purchases': return { nav: 'purchases', title: 'Mis compras', render: (el) => renderBuyerPanel(el, 'orders', params) };
-    case 'buyer': return { nav: second === 'favorites' ? 'favorites' : 'purchases', title: 'Panel de comprador', render: (el) => renderBuyerPanel(el, second ?? 'overview', params) };
-    case 'sell': return { nav: 'sell', title: 'Publicar anuncio', render: (el) => renderSellerPanel(el, 'new', null, params) };
-    case 'seller': return { nav: 'sell', title: 'Panel de vendedor', render: (el) => renderSellerPanel(el, second ?? 'overview', third, params) };
-    case 'settings': return { nav: 'settings', title: 'Ajustes', render: (el) => renderSettings(el, second ?? 'personal', params) };
+    case 'profile': return { nav: 'profile', title: 'Mi perfil', auth: true, render: (el) => renderPublicProfile(el, select.currentUserId()) };
+    case 'favorites': return { nav: 'favorites', title: 'Favoritos', auth: true, render: (el) => renderBuyerPanel(el, 'favorites', params) };
+    case 'purchases': return { nav: 'purchases', title: 'Mis compras', auth: true, render: (el) => renderBuyerPanel(el, 'orders', params) };
+    case 'buyer': return { nav: second === 'favorites' ? 'favorites' : 'purchases', title: second === 'messages' ? 'Mensajes' : 'Panel de comprador', auth: true, render: (el) => renderBuyerPanel(el, second ?? 'overview', params) };
+    case 'sell': return { nav: 'sell', title: 'Publicar anuncio', auth: true, render: (el) => renderSellerPanel(el, 'new', null, params) };
+    case 'seller': return { nav: 'sell', title: 'Panel de vendedor', auth: true, render: (el) => renderSellerPanel(el, second ?? 'overview', third, params) };
+    // La ayuda (condiciones, privacidad, preguntas frecuentes) es pública; el resto de ajustes, no.
+    case 'settings': return { nav: 'settings', title: second === 'help' ? 'Ayuda' : 'Ajustes', auth: second !== 'help', render: (el) => renderSettings(el, second ?? 'personal', params) };
     default: return { nav: '', title: 'Página no encontrada', render: (el) => renderNotFound(el) };
   }
 }
 
-function route() {
+/** Dibuja la vista de la ruta actual. authChange: se ha entrado, salido o cambiado de cuenta. */
+function route({ authChange = false } = {}) {
   const routeInfo = parseRoute();
   const resolved = resolveRoute(routeInfo);
   closeMenus();
@@ -73,7 +76,13 @@ function route() {
   void container.offsetWidth; // reinicia la animación de entrada
   container.classList.add('view--enter');
   try {
-    currentView = resolved.render(container) ?? null;
+    if (resolved.auth && select.isGuest()) {
+      // Invitado en una sección privada: se explica y se ofrece entrar o registrarse.
+      currentView = renderLoginRequired(container, resolved.title);
+      if (!isFirstRender && !authChange) openAuthDialog({ reason: `Inicia sesión o crea una cuenta para acceder a «${resolved.title}».` });
+    } else {
+      currentView = resolved.render(container) ?? null;
+    }
   } catch (error) {
     console.error(error);
     container.innerHTML = emptyState({ iconName: 'alert', title: 'No se pudo mostrar esta sección', text: 'Se ha producido un error inesperado.' });
@@ -81,11 +90,28 @@ function route() {
   }
   document.title = `${resolved.title} · ${APP_CONFIG.brandName}`;
   highlightNav(resolved.nav);
-  if (!isFirstRender && !routeInfo.params.has('keepScroll')) {
+  if (!isFirstRender && !authChange && !routeInfo.params.has('keepScroll')) {
     window.scrollTo({ top: 0 });
     qs('#main').focus({ preventScroll: true });
   }
   isFirstRender = false;
+}
+
+/** Sección privada vista por un invitado. */
+function renderLoginRequired(container, title) {
+  container.innerHTML = `
+    <div class="container page">
+      ${emptyState({
+        iconName: 'lock',
+        title: 'Inicia sesión para continuar',
+        text: `«${title}» solo está disponible con una cuenta. Como invitado puedes ver anuncios, categorías y perfiles públicos.`,
+        action: `<div class="empty-state__actions">
+          <button type="button" class="btn btn--primary" data-auth-open="login">${icon('login')}Iniciar sesión</button>
+          <button type="button" class="btn btn--ghost" data-auth-open="register">${icon('userPlus')}Crear cuenta</button>
+        </div>`,
+      })}
+    </div>`;
+  return null;
 }
 
 function highlightNav(navId) {
@@ -161,61 +187,91 @@ function closeMenus() {
   qs('#nav-overlay').hidden = true;
 }
 
+/** Selector de cuentas de prueba (entrar en ellas no pide contraseña). */
+function demoSwitcher(user) {
+  const demoUsers = select.demoUsers();
+  if (!demoUsers.length) return '';
+  const currentIsDemo = demoUsers.some((candidate) => candidate.id === user?.id);
+  return `
+    <div class="user-menu__demo">
+      <label for="demo-user-switch">Cuenta de demostración</label>
+      <select id="demo-user-switch">
+        ${currentIsDemo ? '' : '<option value="" selected>Elige una cuenta de prueba…</option>'}
+        ${demoUsers.map((candidate) => `<option value="${candidate.id}" ${candidate.id === user?.id ? 'selected' : ''}>${escapeHtml(candidate.displayName)} (@${escapeHtml(candidate.username)})</option>`).join('')}
+      </select>
+      <p class="field__help">Cambia de usuario para probar la compra y la venta entre cuentas. Las cuentas que crees tú piden su contraseña.</p>
+    </div>`;
+}
+
 /** Actualiza avatar, menú de usuario y contadores de la cabecera. */
 function updateHeader() {
   const user = select.currentUser();
-  if (!user) return;
-  qs('#user-menu-avatar').innerHTML = avatar(user, 'sm');
-  const stats = select.buyerStats(user.id);
-  const sellerPending = select.sellerStats(user.id).pendingOrders;
+  const stats = user ? select.buyerStats(user.id) : null;
+  const sellerPending = user ? select.sellerStats(user.id).pendingOrders : 0;
+  qs('#user-menu-avatar').innerHTML = avatar(user ?? 'guest', 'sm');
+  qs('#user-menu-trigger .visually-hidden').textContent = user ? `Menú de usuario de ${user.displayName}` : 'Menú de usuario: no has iniciado sesión';
   const setCount = (name, value) => {
     const dot = qs(`[data-count="${name}"]`);
     dot.hidden = !value;
     dot.textContent = value > 9 ? '9+' : String(value);
   };
-  setCount('favorites', stats.favorites);
-  setCount('orders', stats.activeOrders + stats.activeRentals);
-  setCount('messages', stats.unreadMessages);
+  setCount('favorites', stats?.favorites ?? 0);
+  setCount('orders', stats ? stats.activeOrders + stats.activeRentals : 0);
+  setCount('messages', stats?.unreadMessages ?? 0);
 
   const panel = qs('#user-menu-panel');
   const wasOpen = !panel.hidden;
-  panel.innerHTML = `
-    <div class="user-menu__header">
-      ${avatar(user, 'md')}
-      <div><strong>${escapeHtml(user.displayName)}</strong><small>@${escapeHtml(user.username)}</small></div>
-    </div>
-    <ul class="user-menu__list">
-      <li><a href="#/profile">${icon('user')}Mi perfil público</a></li>
-      <li><a href="#/seller/overview">${icon('store')}Panel de vendedor${sellerPending ? `<span class="count-pill">${sellerPending}</span>` : ''}</a></li>
-      <li><a href="#/buyer/overview">${icon('bag')}Panel de comprador</a></li>
-      <li><a href="#/buyer/messages">${icon('message')}Mensajes${stats.unreadMessages ? `<span class="count-pill">${stats.unreadMessages}</span>` : ''}</a></li>
-      <li><a href="#/settings/personal">${icon('sliders')}Ajustes</a></li>
-      <li><a href="#/settings/help">${icon('help')}Ayuda y soporte</a></li>
-    </ul>
-    <div class="user-menu__demo">
-      <label for="demo-user-switch">Cuenta de demostración</label>
-      <select id="demo-user-switch">
-        ${select.users().map((candidate) => `<option value="${candidate.id}" ${candidate.id === user.id ? 'selected' : ''}>${escapeHtml(candidate.displayName)} (@${escapeHtml(candidate.username)})</option>`).join('')}
-      </select>
-      <p class="field__help">Cambia de usuario para probar la compra y la venta entre cuentas. Sin autenticación real.</p>
-    </div>
-    <ul class="user-menu__list user-menu__list--footer">
-      <li><button type="button" id="reset-demo">${icon('refresh')}Restablecer datos de prueba</button></li>
-      <li><button type="button" disabled title="Requiere autenticación con backend">${icon('logout')}Cerrar sesión ${backendBadge()}</button></li>
-    </ul>`;
+  const resetItem = `<li><button type="button" id="reset-demo">${icon('refresh')}Restablecer datos de prueba</button></li>`;
+
+  if (!user) {
+    panel.innerHTML = `
+      <div class="user-menu__header">
+        ${avatar('guest', 'md')}
+        <div><strong>Invitado</strong><small>No has iniciado sesión</small></div>
+      </div>
+      <div class="user-menu__auth">
+        <button type="button" class="btn btn--primary btn--block" data-auth-open="login">${icon('login')}Iniciar sesión</button>
+        <button type="button" class="btn btn--ghost btn--block" data-auth-open="register">${icon('userPlus')}Crear cuenta</button>
+      </div>
+      <ul class="user-menu__list">
+        <li><a href="#/settings/help">${icon('help')}Ayuda y soporte</a></li>
+      </ul>
+      ${demoSwitcher(null)}
+      <ul class="user-menu__list user-menu__list--footer">${resetItem}</ul>`;
+  } else {
+    panel.innerHTML = `
+      <div class="user-menu__header">
+        ${avatar(user, 'md')}
+        <div><strong>${escapeHtml(user.displayName)}</strong><small>@${escapeHtml(user.username)}</small></div>
+      </div>
+      <ul class="user-menu__list">
+        <li><a href="#/profile">${icon('user')}Mi perfil público</a></li>
+        <li><a href="#/seller/overview">${icon('store')}Panel de vendedor${sellerPending ? `<span class="count-pill">${sellerPending}</span>` : ''}</a></li>
+        <li><a href="#/buyer/overview">${icon('bag')}Panel de comprador</a></li>
+        <li><a href="#/buyer/messages">${icon('message')}Mensajes${stats.unreadMessages ? `<span class="count-pill">${stats.unreadMessages}</span>` : ''}</a></li>
+        <li><a href="#/settings/personal">${icon('sliders')}Ajustes</a></li>
+        <li><a href="#/settings/help">${icon('help')}Ayuda y soporte</a></li>
+      </ul>
+      ${demoSwitcher(user)}
+      <ul class="user-menu__list user-menu__list--footer">
+        ${resetItem}
+        <li><button type="button" data-auth-open="login">${icon('login')}Iniciar sesión con otra cuenta</button></li>
+        <li><button type="button" data-logout>${icon('logout')}Cerrar sesión</button></li>
+      </ul>`;
+  }
   panel.hidden = !wasOpen;
 
-  qs('#demo-user-switch', panel).addEventListener('change', async (event) => {
+  qs('#demo-user-switch', panel)?.addEventListener('change', async (event) => {
+    if (!event.target.value) return;
     try {
       await actions.switchDemoUser(event.target.value);
-      toast(`Ahora navegas como ${select.currentUser().displayName}.`, { tone: 'info' });
+      toast(`Ahora navegas como ${select.currentUser().displayName}`, { tone: 'info' });
       closeUserMenu();
-      route();
     } catch (error) { handleError(error); }
   });
   qs('#reset-demo', panel).addEventListener('click', async () => {
     closeUserMenu();
-    const ok = await confirmDialog({ title: 'Restablecer datos de prueba', message: 'Se borrarán los anuncios, pedidos, mensajes y cambios guardados en este navegador y se cargarán de nuevo los datos iniciales.', confirmLabel: 'Restablecer', danger: true });
+    const ok = await confirmDialog({ title: 'Restablecer datos de prueba', message: 'Se borrarán los anuncios, pedidos, mensajes, cuentas creadas y cambios guardados en este navegador y se cargarán de nuevo los datos iniciales.', confirmLabel: 'Restablecer', danger: true });
     if (!ok) return;
     try {
       await actions.resetDemoData();
@@ -244,10 +300,28 @@ function setupGlobalActions() {
       navigate(link.getAttribute('href'));
     }
   });
+  // Botones «Iniciar sesión» / «Crear cuenta» / «Cerrar sesión» de cualquier parte de la página.
+  document.addEventListener('click', async (event) => {
+    const authButton = event.target.closest('[data-auth-open]');
+    if (authButton) {
+      closeMenus();
+      openAuthDialog({ mode: authButton.dataset.authOpen });
+      return;
+    }
+    const logoutButton = event.target.closest('[data-logout]');
+    if (logoutButton) {
+      closeMenus();
+      try {
+        await logout();
+        if (resolveRoute(parseRoute()).auth) navigate('#/home');
+      } catch (error) { handleError(error); }
+    }
+  });
   document.addEventListener('click', async (event) => {
     const favButton = event.target.closest('[data-action="toggle-favorite"]');
     if (favButton) {
       event.preventDefault();
+      if (!requireLogin('Inicia sesión o crea una cuenta para guardar favoritos.')) return;
       await withBusy(favButton, async () => {
         try {
           const { favorite } = await actions.toggleFavorite(favButton.dataset.listingId);
@@ -555,7 +629,8 @@ function renderListingDetail(container, listingId) {
     } else if (availability.available) {
       actionHtml = `
         <button type="button" class="btn btn--primary btn--block btn--lg" data-buy>${icon(isRent ? 'calendar' : 'bag')}${actionLabel}</button>
-        <a href="#/buyer/messages?listing=${listing.id}&with=${seller.id}" class="btn btn--ghost btn--block">${icon('message')}Contactar con el vendedor</a>`;
+        <a href="#/buyer/messages?listing=${listing.id}&with=${seller.id}" class="btn btn--ghost btn--block">${icon('message')}Contactar con el vendedor</a>
+        ${select.isGuest() ? `<p class="muted small detail__guest-hint">${icon('lock', 'icon--xs')}Necesitas una cuenta para ${isRent ? 'alquilar' : 'comprar'}, contactar o guardar favoritos. <button type="button" class="link-btn" data-auth-open="login">Inicia sesión</button></p>` : ''}`;
     } else {
       actionHtml = `
         ${notice(escapeHtml(availability.reason), 'warning')}
@@ -655,8 +730,12 @@ function renderListingDetail(container, listingId) {
       paint();
       qs(`[data-image-index="${activeImage}"]`, container)?.focus();
     }));
-    qs('[data-buy]', container)?.addEventListener('click', () => openPurchaseDialog(listing));
-    qs('[data-report]', container)?.addEventListener('click', () => openReportDialog(listing));
+    qs('[data-buy]', container)?.addEventListener('click', () => {
+      if (requireLogin(`Inicia sesión o crea una cuenta para ${isRent ? 'solicitar el alquiler' : 'comprar este artículo'}.`)) openPurchaseDialog(listing);
+    });
+    qs('[data-report]', container)?.addEventListener('click', () => {
+      if (requireLogin('Inicia sesión para denunciar un anuncio.')) openReportDialog(listing);
+    });
   };
 
   paint();
@@ -680,6 +759,10 @@ function renderPublicProfile(container, userId) {
     const privacy = user.preferences?.privacy ?? {};
     if (privacy.profileVisibility === 'private' && !isOwn) {
       container.innerHTML = `<div class="container page">${emptyState({ iconName: 'lock', title: 'Perfil privado', text: 'Este usuario ha decidido no mostrar su perfil públicamente.' })}</div>`;
+      return;
+    }
+    if (privacy.profileVisibility === 'registered' && select.isGuest()) {
+      container.innerHTML = `<div class="container page">${emptyState({ iconName: 'lock', title: 'Perfil solo para usuarios registrados', text: 'Este usuario solo muestra su perfil a quien ha iniciado sesión.', action: `<button type="button" class="btn btn--primary" data-auth-open="login">${icon('login')}Iniciar sesión</button>` })}</div>`;
       return;
     }
     const rating = select.ratingSummary(user.id);
@@ -744,14 +827,23 @@ async function bootstrap() {
     viewContainer().innerHTML = `<div class="container page">${emptyState({ iconName: 'alert', title: 'No se pudieron cargar los datos', text: 'Comprueba que el navegador permite LocalStorage e inténtalo de nuevo.' })}</div>`;
     return;
   }
+  let lastUserId = select.currentUserId();
   subscribe(() => {
     updateHeader();
-    currentView?.update?.();
+    // Al entrar, salir o cambiar de cuenta se vuelve a dibujar la vista completa
+    // (cambian permisos, «Tu anuncio», paneles privados…).
+    if (select.currentUserId() !== lastUserId) {
+      lastUserId = select.currentUserId();
+      route({ authChange: true });
+    } else {
+      currentView?.update?.();
+    }
   });
   updateHeader();
-  window.addEventListener('hashchange', route);
+  window.addEventListener('hashchange', () => route());
   if (!location.hash) replaceHash('#/home');
   route();
+  promptLoginOnFirstVisit();
   if (!select.isPersistent()) {
     toast('Este navegador no permite guardar datos: los cambios se perderán al recargar la página.', { tone: 'warning', timeout: 9000 });
   }

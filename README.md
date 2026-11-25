@@ -6,7 +6,7 @@ Este es un comienzo o unas bases para seguir con este proyecto.
 
 Prototipo navegable de una plataforma para **comprar, vender y alquilar** artículos de segunda mano, coches, motos, viviendas y habitaciones desde una misma aplicación.
 
-> **Importante:** es una **demostración 100 % local**. No hay servidor, autenticación, pagos ni mensajería reales. Todos los datos se guardan en el `LocalStorage` del navegador. «Trato» es un nombre provisional.
+> **Importante:** es una **demostración 100 % local**. No hay servidor, pagos ni mensajería reales. Las cuentas (registro e inicio de sesión) funcionan, pero se guardan solo en el `LocalStorage` del navegador, igual que el resto de datos. «Trato» es un nombre provisional.
 
 ---
 
@@ -52,6 +52,7 @@ esqueletoDeMarquetplace/
 │   └── e2e.mjs         Prueba de extremo a extremo (Playwright) de los escenarios de verificación
 └── js/
     ├── app.js          Arranque, enrutado por hash, cabecera, inicio, explorar, categorías, detalle y perfil público
+    ├── auth.js         Cuadro de acceso (iniciar sesión / crear cuenta / seguir como invitado) y permisos de invitado
     ├── data.js         Configuración, categorías + esquema de campos dinámicos, estados y DATOS DE PRUEBA
     ├── api.js          "API" local: reglas de negocio + persistencia en LocalStorage (sustituible por REST)
     ├── store.js        Única fuente de datos de la interfaz: selectores (datos derivados) y acciones
@@ -110,7 +111,9 @@ Las transiciones permitidas por rol están en `ORDER_TRANSITIONS` (`data.js`).
 
 ## 4. Datos de prueba
 
-Cinco cuentas ficticias (correos `@example.com`). Se cambia de cuenta desde el **menú de usuario › Cuenta de demostración**:
+Al abrir la página sin sesión aparece un cuadro de acceso con tres opciones: **iniciar sesión**, **crear una cuenta** o cerrarlo y **seguir como invitado**. Sale una vez por pestaña del navegador; después se puede abrir desde el menú de usuario (avatar arriba a la derecha).
+
+Hay cinco cuentas de prueba (correos `@example.com`). Todas usan la contraseña pública **`demo1234`** y también se puede entrar en ellas sin contraseña desde **menú de usuario › Cuenta de demostración** o desde «Probar con una cuenta de demostración» en el cuadro de acceso. Las cuentas que crees tú no aparecen ahí: piden su contraseña.
 
 | Cuenta | Perfil |
 |---|---|
@@ -125,6 +128,14 @@ Incluye 27 anuncios variados (todos distintos, con ilustraciones SVG generadas l
 ---
 
 ## 5. Funcionalidades implementadas
+
+**Cuentas y acceso**
+- Cuadro de acceso al abrir la página (no ocupa toda la pantalla; en móvil sale desde abajo) con pestañas «Iniciar sesión» y «Crear cuenta», acceso a las cuentas de prueba y botón «Seguir como invitado».
+- Registro con nombre, apellidos, usuario, correo, contraseña repetida y aceptación de condiciones. Correo y usuario únicos; contraseña de 8 caracteres como mínimo con letras y números.
+- Inicio de sesión con correo o nombre de usuario. Si falla, el mensaje no dice si existe la cuenta.
+- Las contraseñas se guardan cifradas con PBKDF2-SHA256 (Web Crypto, sal aleatoria), nunca en texto plano. La sesión se mantiene al recargar.
+- Menú de usuario con «Iniciar sesión», «Crear cuenta», «Iniciar sesión con otra cuenta» y «Cerrar sesión». Cambio de contraseña en *Ajustes › Seguridad* para las cuentas propias.
+- **Permisos de invitado:** puede ver inicio, búsqueda, categorías, anuncios, perfiles públicos y la ayuda. Para comprar, alquilar, guardar favoritos, enviar mensajes, denunciar, publicar o entrar en los paneles y ajustes se le muestra el cuadro de acceso. La API local rechaza esas acciones sin sesión (`auth_required`). Los perfiles marcados como «Solo usuarios registrados» no se muestran a invitados.
 
 **Navegación y diseño**
 - Cabecera persistente con logotipo sustituible, buscador, selector de categorías, favoritos, compras, mensajes (con contadores), botón «Publicar anuncio» y menú desplegable de usuario.
@@ -180,8 +191,9 @@ Están señaladas en la interfaz con la etiqueta **«Requiere backend»** o con 
 
 | Función | Estado en esta versión |
 |---|---|
-| Registro, inicio y cierre de sesión | Sin autenticación: se cambia de «cuenta de demostración» libremente |
-| Cambio de contraseña | Deshabilitado (no se almacenan contraseñas) |
+| Registro, inicio y cierre de sesión | Funcionan, pero las cuentas solo existen en este navegador y la comprobación se hace en el cliente |
+| Cambio de contraseña | Funciona en local para las cuentas creadas (las de prueba usan `demo1234`) |
+| Verificación de correo y recuperación de contraseña | No disponibles |
 | Gestión de sesiones y dispositivos | Solo se muestra la sesión actual |
 | Eliminación definitiva de la cuenta | Deshabilitado |
 | Persistencia compartida entre usuarios y dispositivos | Solo en el navegador actual |
@@ -201,6 +213,9 @@ Todas las validaciones del navegador (propietario, transiciones, solapes…) **d
 
 Comprobados de forma automática con `tests/e2e.mjs` (sin errores de consola):
 
+- Cuadro de acceso al abrir la página (una vez por pestaña), seguir como invitado y ver que favoritos, compras y secciones privadas piden iniciar sesión.
+- Crear una cuenta (errores por campo, correo repetido, contraseñas distintas o cortas), comprobar que la contraseña se guarda cifrada, cambiarla, cerrar sesión, rechazar una contraseña incorrecta, entrar con el nombre de usuario y mantener la sesión al recargar.
+- Entrar en una cuenta de prueba con correo + `demo1234` y con el selector de demostración.
 - Crear un anuncio de ropa y encontrarlo en su categoría, en la búsqueda y en «Mis anuncios».
 - Crear un coche en venta (sin campos de alquiler) y otro en alquiler (con edad mínima, antigüedad del permiso, fianza, seguro, límite de km y condiciones de recogida).
 - Crear una vivienda en venta (certificado energético) y otra en alquiler (fianza y fecha de disponibilidad).
@@ -218,7 +233,7 @@ Comprobados de forma automática con `tests/e2e.mjs` (sin errores de consola):
 ## 8. Mejoras propuestas para una segunda versión
 
 1. **Backend y base de datos** (p. ej. Node/NestJS o Django + PostgreSQL) implementando `RestApi` con las mismas reglas de `LocalApi`, transacciones y bloqueo de disponibilidad en el servidor.
-2. **Autenticación** (OAuth/OIDC o correo + contraseña con hash), verificación de correo y teléfono, roles (usuario, moderador, administrador).
+2. **Autenticación en el servidor**: llevar el registro y el inicio de sesión actuales a un backend (correo + contraseña con bcrypt/argon2 o un proveedor como Neon Auth), sesión con cookie HttpOnly, verificación de correo y teléfono, recuperación de contraseña y roles (usuario, moderador, administrador).
 3. **Pagos** con un proveedor (Stripe Connect, Adyen…) con pago retenido hasta la entrega, fianzas, reembolsos y facturación.
 4. **Imágenes** en almacenamiento de objetos con CDN, miniaturas y moderación automática.
 5. **Mensajería en tiempo real** (WebSockets), notificaciones push y por correo, alertas de búsqueda guardadas.

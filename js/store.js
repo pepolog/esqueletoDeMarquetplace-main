@@ -46,10 +46,14 @@ export async function initStore() {
 
 export const select = {
   currentUserId: () => state.currentUserId,
+  /** true si nadie ha iniciado sesión: el visitante navega como invitado (solo lectura). */
+  isGuest: () => !state.currentUserId,
   /** false si el navegador no permite guardar datos (los cambios se pierden al recargar). */
   isPersistent: () => api.persistent,
   currentUser: () => state.db.users.find((user) => user.id === state.currentUserId) ?? null,
   users: () => state.db.users,
+  /** Cuentas de prueba: se puede entrar en ellas sin escribir la contraseña. */
+  demoUsers: () => state.db.users.filter((user) => user.demo),
   user: (userId) => state.db.users.find((user) => user.id === userId) ?? null,
 
   /** Devuelve un anuncio, incluso si fue eliminado (para mostrar pedidos históricos). */
@@ -236,6 +240,10 @@ const me = () => state.currentUserId;
 
 export const actions = {
   switchDemoUser: (userId) => run(() => api.switchDemoUser(userId)),
+  login: (credentials) => run(() => api.login(credentials)),
+  register: (data) => run(() => api.register(data)),
+  logout: () => run(() => api.logout()),
+  changePassword: (payload) => run(() => api.changePassword(me(), payload)),
   resetDemoData: () => run(() => api.resetDemoData()),
   updateProfile: (patch) => run(() => api.updateUser(me(), me(), patch)),
 
