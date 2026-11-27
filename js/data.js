@@ -387,12 +387,13 @@ export const DEMO_ACCOUNTS = [
  */
 export function placeholderImage({ label, iconName = 'box', variant = 0 }) {
   const paths = ICONS[iconName] ?? ICONS.box;
-  const paper = variant % 2 ? '#E9DCC0' : '#E6D7B8';
   const categoryName = CATEGORIES.find((category) => category.icon === iconName)?.shortName;
   const caption = `Foto ${variant + 1}${categoryName ? ` · ${categoryName}` : ''}`;
   const text = String(label ?? '');
   const subtitle = `${text.length > 40 ? `${text.slice(0, 38)}…` : text}`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"><defs><pattern id="h" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="14" height="14" fill="${paper}"/><rect width="2" height="14" fill="#6B4F35" fill-opacity=".1"/></pattern></defs><rect width="800" height="600" fill="url(#h)"/><g transform="translate(340 170) scale(5)" fill="none" stroke="#6B4F35" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">${paths}</g><text x="400" y="376" text-anchor="middle" font-family="IM Fell English SC,Georgia,'Times New Roman',serif" font-variant="small-caps" font-size="44" letter-spacing="3" fill="#4A3626">${escapeXml(caption)}</text><text x="400" y="424" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="22" font-style="italic" fill="#6B4F35">Imagen de demostración · ${escapeXml(subtitle)}</text></svg>`;
+  // Lonja v2: zona de foto lisa (#F1EDE6), sin rayado ni versalitas; icono y rótulos en tonos de texto secundario.
+  const ui = "Inter,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"><rect width="800" height="600" fill="#F1EDE6"/><g transform="translate(340 170) scale(5)" fill="none" stroke="#8A8075" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">${paths}</g><text x="400" y="376" text-anchor="middle" font-family="${ui}" font-size="34" font-weight="600" fill="#5F564E">${escapeXml(caption)}</text><text x="400" y="420" text-anchor="middle" font-family="${ui}" font-size="22" fill="#5F564E">Imagen de demostración · ${escapeXml(subtitle)}</text></svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 

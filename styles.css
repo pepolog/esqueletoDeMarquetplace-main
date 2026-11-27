@@ -18,19 +18,56 @@
 
 /* 1. Variables ------------------------------------------------------------ */
 :root {
-  /* Paleta de la guía de estilo */
-  --parchment: #F3E9D2;        /* Pergamino: fondo general */
-  --parchment-dark: #E6D7B8;   /* Pergamino oscuro: superficies secundarias */
-  --parchment-light: #FBF5E6;  /* Papel de tarjetas y paneles */
-  --paper-field: #FFFCF4;      /* Fondo de los campos */
-  --ink: #2B2118;              /* Tinta: texto principal */
-  --sepia: #4A3626;            /* Bordes y texto secundario */
-  --sepia-light: #6B4F35;      /* Bordes de campos, iconos */
-  --sealing-red: #7A2E1F;      /* Rojo lacre: acción principal, precios, enlaces */
-  --sealing-red-dark: #5C2015;
-  --old-gold: #C9A86A;         /* Oro viejo: detalles (nunca lleva texto) */
-  --rule: #A68A64;             /* Filete punteado: separadores y marcos */
-  --card-border: #CDB894;
+  /* ---- Lonja · Tokens de diseño v2 (luz y legibilidad) ----
+     Solo cambian color, iluminación y tipografía: la estructura y el
+     comportamiento siguen igual. La paleta de abajo apunta a estos tokens. */
+  --lj-bg:            #FBF9F5;  /* fondo general, liso */
+  --lj-surface:       #FFFFFF;  /* tarjetas, formularios, cabecera, modales */
+  --lj-photo:         #F1EDE6;  /* zona de foto, esqueletos de carga, hover */
+  --lj-parchment:     #F3E9D2;  /* SOLO detalles: recuadro destacado, banners suaves, avatar */
+  --lj-border:        #E9E2D6;  /* borde de tarjetas y separadores de capa (decorativo) */
+  --lj-border-field:  #8A8075;  /* borde de campos y botón secundario: 3,87:1 sobre blanco */
+  --lj-ornament:      #D6C8B0;  /* filetes dobles y punteados */
+  --lj-gold:          #C9A86A;  /* rombo, marco doble de destacados. Nunca para texto */
+  --lj-text:          #2A2420;  /* principal: 15,3:1 sobre blanco */
+  --lj-text-2:        #5F564E;  /* secundario: 7,2:1 sobre blanco, 6,2:1 sobre zona de foto */
+  --lj-on-accent:     #FFFFFF;
+  --lj-accent:        #7A2E1F;  /* acento burdeos: botón principal, enlaces, estados activos */
+  --lj-accent-hover:  #5C2015;
+  --lj-danger:        #8E2A1A;
+  --lj-st-pendiente-fg:  #5A3E0E; --lj-st-pendiente-bg:  #EBD9A8;
+  --lj-st-aceptado-fg:   #34431F; --lj-st-aceptado-bg:   #DCE3CC;
+  --lj-st-enviado-fg:    #2A3F52; --lj-st-enviado-bg:    #D8E0E6;
+  --lj-st-completado-fg: #FFFFFF; --lj-st-completado-bg: #34431F;
+  --lj-st-cancelado-fg:  #7A2E1F; --lj-st-cancelado-bg:  #F2D9D1;
+  --lj-st-reservado-fg:  #2A2420; --lj-st-reservado-bg:  #C9A86A;
+  --lj-st-vendido-fg:    #FFFFFF; --lj-st-vendido-bg:    #2A2420;
+  --lj-font-logo:  'IM Fell English SC', serif;      /* solo el logotipo LONJA */
+  --lj-font-title: 'Cormorant Garamond', serif;      /* titular principal y títulos de sección */
+  --lj-font-ui:    'Inter', system-ui, sans-serif;   /* todo lo demás */
+  --lj-fs-secondary: 14px;  /* mínimo para texto secundario */
+  --lj-fs-body:      16px;  /* mínimo para texto de lectura */
+  --lj-fs-h1:        clamp(36px, 4.2vw, 56px);
+  --lj-fs-h2:        clamp(24px, 2.4vw, 32px);
+  --lj-shadow-card:  0 1px 2px rgba(42,36,32,.05), 0 4px 14px rgba(42,36,32,.05);
+  --lj-shadow-pop:   0 12px 30px rgba(42,36,32,.14);
+  --lj-shadow-modal: 0 24px 60px rgba(42,36,32,.30);
+  --lj-radius: 6px;
+  --lj-focus: 3px solid #2A2420;
+
+  /* Paleta de la guía de estilo (v2: valores de los tokens) */
+  --parchment: var(--lj-parchment);  /* Pergamino: solo detalles */
+  --parchment-dark: var(--lj-photo);  /* Superficies secundarias y zona de foto */
+  --parchment-light: var(--lj-surface);  /* Tarjetas y paneles */
+  --paper-field: var(--lj-surface);  /* Fondo de los campos */
+  --ink: var(--lj-text);  /* Texto principal */
+  --sepia: var(--lj-text-2);  /* Texto secundario */
+  --sepia-light: var(--lj-border-field);  /* Bordes de campos, iconos */
+  --sealing-red: var(--lj-accent);  /* Burdeos: acción principal, enlaces, estados activos */
+  --sealing-red-dark: var(--lj-accent-hover);
+  --old-gold: var(--lj-gold);  /* Oro viejo: detalles (nunca lleva texto) */
+  --rule: var(--lj-ornament);  /* Filetes dobles y punteados */
+  --card-border: var(--lj-border);
 
   /* Alias semánticos (los usan todos los componentes) */
   --color-primary: var(--sealing-red);
@@ -48,26 +85,26 @@
   --color-info: #2A3F52;
   --color-info-soft: #D8E0E6;
 
-  --color-bg: var(--parchment);
+  --color-bg: var(--lj-bg);
   --color-surface: var(--parchment-light);
-  --color-surface-muted: #EFE3C9;
+  --color-surface-muted: var(--lj-photo);
   --color-field: var(--paper-field);
   --color-text: var(--ink);
   --color-text-muted: var(--sepia);
   --color-border: var(--card-border);
   --color-border-strong: var(--sepia-light);
-  --color-focus: var(--sepia);
+  --color-focus: var(--lj-text);
 
-  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-serif: 'Cormorant Garamond', Garamond, Georgia, 'Times New Roman', serif;
-  --font-display: 'IM Fell English SC', 'Cormorant Garamond', Georgia, serif;
+  --font-sans: var(--lj-font-ui);
+  --font-serif: var(--lj-font-title);
+  --font-display: var(--lj-font-logo);
 
   --radius-sm: 4px;
   --radius: 6px;
-  --radius-lg: 8px;
-  --shadow-sm: 0 1px 2px rgba(43, 33, 24, 0.06);
-  --shadow: 0 6px 18px rgba(43, 33, 24, 0.12);
-  --shadow-lg: 0 12px 30px rgba(43, 33, 24, 0.22);
+  --radius-lg: var(--lj-radius);
+  --shadow-sm: var(--lj-shadow-card);
+  --shadow: var(--lj-shadow-pop);
+  --shadow-lg: var(--lj-shadow-pop);
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -87,16 +124,11 @@ html { -webkit-text-size-adjust: 100%; scroll-padding-top: 110px; background: va
 body {
   margin: 0;
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: var(--lj-fs-body);
   line-height: 1.5;
   color: var(--color-text);
   background-color: var(--color-bg);
-  /* Textura de papel: muy suave, solo en el fondo. */
-  background-image:
-    radial-gradient(ellipse 60% 30% at 10% 6%, rgba(166, 138, 100, 0.12), transparent 70%),
-    radial-gradient(ellipse 50% 40% at 90% 60%, rgba(166, 138, 100, 0.08), transparent 70%),
-    repeating-linear-gradient(0deg, rgba(74, 54, 38, 0.02) 0 1px, transparent 1px 3px);
-  background-attachment: fixed;
+  background-image: none;  /* v2: fondo liso, sin textura */
   overflow-x: hidden;
 }
 body.has-modal { overflow: hidden; }
@@ -424,7 +456,7 @@ input:disabled, select:disabled, textarea:disabled { background: var(--parchment
 }
 .notice > .icon { margin-top: 1px; color: var(--sepia-light); }
 .notice p { margin: var(--space-1) 0 0; }
-.notice--warning { background: var(--color-warning-soft); color: var(--color-warning); border-color: #CDAE6A; }
+.notice--warning { background: var(--color-warning-soft); color: var(--color-warning); border-color: var(--lj-ornament); }
 .notice--warning > .icon { color: currentColor; }
 
 .empty-state { text-align: center; padding: var(--space-7) var(--space-4); color: var(--color-text-muted); }
@@ -508,10 +540,10 @@ input:disabled, select:disabled, textarea:disabled { background: var(--parchment
 .listing-card__media {
   position: relative; aspect-ratio: 4 / 3;
   background-color: var(--parchment-dark);
-  background-image: repeating-linear-gradient(135deg, rgba(107, 79, 53, 0.10) 0 1px, transparent 1px 7px);
+  background-image: none;
 }
 .listing-card__media img { width: 100%; height: 100%; object-fit: cover; }
-.listing-card--inactive .listing-card__media::after { content: ''; position: absolute; inset: 0; background: rgba(243, 233, 210, 0.6); pointer-events: none; }
+.listing-card--inactive .listing-card__media::after { content: ''; position: absolute; inset: 0; background: rgba(251, 249, 245, 0.6); pointer-events: none; }
 .listing-card__noimg, .photo-placeholder {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 100%; min-height: 140px;
   color: var(--sepia-light); font-family: var(--font-display); font-size: 13px; letter-spacing: 0.08em; text-align: center; padding: 0 var(--space-3);
@@ -666,7 +698,7 @@ input:disabled, select:disabled, textarea:disabled { background: var(--parchment
 .detail__content { grid-area: content; display: flex; flex-direction: column; gap: 40px; min-width: 0; }
 .gallery__main {
   position: relative; border-radius: var(--radius); overflow: hidden; aspect-ratio: 16 / 11; border: 1px solid var(--card-border);
-  background-color: var(--parchment-dark); background-image: repeating-linear-gradient(135deg, rgba(107, 79, 53, 0.10) 0 1px, transparent 1px 7px);
+  background-color: var(--parchment-dark); background-image: none;
 }
 .gallery__main img { width: 100%; height: 100%; object-fit: cover; }
 .gallery__main .listing-card__noimg .icon { width: 56px; height: 56px; }
@@ -1278,3 +1310,87 @@ section.panel-card:not(.card) { padding: 0; margin-top: var(--space-5); }
   .listing-grid, .listing-grid--3 { grid-template-columns: 1fr; }
   .auth__grid { grid-template-columns: 1fr; }
 }
+
+
+/* 13. Lonja v2 · luz y legibilidad ---------------------------------------------
+   Tokens --lj-* aplicados a las clases del diseño. Solo cambian color,
+   iluminación y tipografía; la estructura y el comportamiento siguen igual. */
+
+/* Banner «Versión de prueba»: fino y claro */
+.demo-banner {
+  background: var(--lj-parchment); color: var(--lj-text); font-size: var(--lj-fs-secondary); line-height: 1.3;
+  padding: 6px 16px; min-height: 0; text-align: center; border-bottom: 1px solid var(--lj-border); box-shadow: none;
+}
+.demo-banner strong { font-weight: 600; color: var(--lj-text); }
+
+/* Logotipo: la única versalita */
+.brand__name, .site-footer__brand { font-family: var(--lj-font-logo); letter-spacing: .14em; }
+
+/* Titulares: serif solo en h1 y títulos de sección, sin versalitas */
+h1, h2, .hero__title, .section-header__title, .modal__title, .modal--auth .modal__title {
+  font-family: var(--lj-font-title); font-weight: 600; font-variant: normal; text-transform: none;
+  letter-spacing: -0.005em; color: var(--lj-text);
+}
+h1, .hero__title { font-size: var(--lj-fs-h1); line-height: 1.05; }
+h2 { font-size: var(--lj-fs-h2); line-height: 1.15; }
+.modal__title, .modal--auth .modal__title { font-size: 28px; line-height: 1.15; }
+
+/* El resto de rótulos, en la fuente de interfaz y sin versalitas */
+h3, h4, h5, h6, dt, legend, .eyebrow, .display, .empty-state h3, .panel-nav__title, .spec-list dt, .data-table th,
+.order-row__facts dt, .rental-card__facts dt, .listing-card__noimg, .photo-placeholder, .tag, .tag--featured {
+  font-family: var(--lj-font-ui); font-variant: normal; text-transform: none; letter-spacing: 0;
+}
+.eyebrow, .panel-nav__title, .spec-list dt, .data-table th, .order-row__facts dt, .rental-card__facts dt {
+  font-size: var(--lj-fs-secondary); font-weight: 600; color: var(--lj-text-2);
+}
+.empty-state h3 { font-size: 18px; font-weight: 600; }
+.listing-card__noimg, .photo-placeholder { font-size: var(--lj-fs-secondary); color: var(--lj-text-2); }
+
+/* Texto secundario: mínimo 14 px */
+.muted, .small, small, .field__help, .price-change, .stars__value, .section-header__subtitle {
+  font-size: var(--lj-fs-secondary);
+}
+.muted, .field__help, .section-header__subtitle { color: var(--lj-text-2); }
+::placeholder, input::placeholder, textarea::placeholder { color: var(--lj-text-2); opacity: 1; }
+
+/* Capas e iluminación */
+.card, .listing-card { background: var(--lj-surface); border-color: var(--lj-border); border-radius: var(--lj-radius); box-shadow: var(--lj-shadow-card); }
+.listing-card:hover { box-shadow: var(--lj-shadow-pop); }
+.modal { background: var(--lj-surface); border: 1px solid var(--lj-border); box-shadow: var(--lj-shadow-modal); }
+.listing-card__media, .gallery__main { background-color: var(--lj-photo); background-image: none; }
+
+/* Beige solo en detalles */
+.avatar { background: var(--lj-parchment); color: var(--lj-text); }
+.badge--backend { background: var(--lj-parchment); color: var(--lj-text); }
+
+/* Precio en texto principal; el burdeos queda para las acciones */
+.listing-card__price, .detail__price, .manage-row__price, .purchase-summary__price { color: var(--lj-text); font-weight: 700; }
+.listing-card--inactive .listing-card__price { color: var(--lj-text-2); }
+
+/* Campos */
+input[type="text"], input[type="search"], input[type="email"], input[type="tel"], input[type="number"], input[type="password"],
+input[type="date"], input[type="datetime-local"], select, textarea {
+  background: var(--lj-surface); color: var(--lj-text); border: 1.5px solid var(--lj-border-field); border-radius: var(--lj-radius); font-size: var(--lj-fs-body);
+}
+.field__error { color: var(--lj-danger); font-size: var(--lj-fs-secondary); font-weight: 600; }
+.has-error input, .has-error select, .has-error textarea, [aria-invalid="true"] { border: 2px solid var(--lj-danger); }
+
+/* Botones */
+.btn--primary { background: var(--lj-accent); color: var(--lj-on-accent); border: 1px solid var(--lj-accent); }
+.btn--primary:hover:not(:disabled) { background: var(--lj-accent-hover); border-color: var(--lj-accent-hover); color: var(--lj-on-accent); }
+.btn--ghost, .btn--secondary { background: var(--lj-surface); color: var(--lj-text-2); border: 1.5px solid var(--lj-border-field); }
+.btn--ghost:hover:not(:disabled), .btn--secondary:hover:not(:disabled) { background: var(--lj-photo); color: var(--lj-text); }
+
+/* Insignias y etiquetas: sin mayúsculas forzadas, mínimo 14 px */
+.badge, .tag { font-size: 14px; font-weight: 600; text-transform: none; letter-spacing: 0; }
+.tag--gold { background: var(--lj-st-reservado-bg); color: var(--lj-st-reservado-fg); }
+.tag--ink { background: var(--lj-st-vendido-bg); color: var(--lj-st-vendido-fg); }
+.tag--featured { color: var(--lj-accent); background: var(--lj-surface); border: 3px double var(--lj-gold); }
+.badge--st-pending { background: var(--lj-st-pendiente-bg); color: var(--lj-st-pendiente-fg); }
+.badge--st-accepted, .badge--st-confirmed { background: var(--lj-st-aceptado-bg); color: var(--lj-st-aceptado-fg); }
+.badge--st-preparing, .badge--st-shipped, .badge--st-in_progress { background: var(--lj-st-enviado-bg); color: var(--lj-st-enviado-fg); }
+.badge--st-completed { background: var(--lj-st-completado-bg); color: var(--lj-st-completado-fg); }
+.badge--st-cancelled, .badge--st-disputed { background: var(--lj-st-cancelado-bg); color: var(--lj-st-cancelado-fg); }
+/* Las casillas dentro de la barra de búsqueda de la portada no llevan borde propio */
+.hero-search input { border: 0; background: transparent; font-size: 17px; }
+.hero-search__field--where input { font-size: var(--lj-fs-body); }

@@ -201,7 +201,7 @@ export function listingStatusBadge(status) {
 
 export function orderStatusBadge(order) {
   const info = ORDER_STATUS[order.operationType]?.[order.status] ?? { label: order.status, tone: 'neutral' };
-  return badge(info.label, info.tone);
+  return badge(info.label, info.tone, `badge--st-${order.status}`);
 }
 
 /** true si los datos se guardan en la base de datos compartida (Neon); false si solo en este navegador. */
