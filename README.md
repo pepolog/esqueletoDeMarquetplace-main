@@ -80,8 +80,8 @@ BASE_URL=http://localhost:8080/ node tests/e2e.mjs
 
 ```
 esqueletoDeMarquetplace/
-├── index.html          Estructura principal: cabecera, menú, contenedor de vistas, navegación móvil
-├── styles.css          Sistema de estilos: variables, componentes y diseño responsive
+├── index.html          Estructura principal: cabecera, contenedor de vistas, pie y barra inferior móvil
+├── styles.css          Guía de estilo LONJA: colores, tipografías, ornamentos, componentes y diseño responsive
 ├── README.md
 ├── db/
 │   ├── schema.sql      Tablas, seguridad (RLS + permisos), disparadores y funciones de negocio de Neon
@@ -155,9 +155,9 @@ Las transiciones permitidas por rol están en `ORDER_TRANSITIONS` (`data.js`).
 
 ## 4. Datos de prueba
 
-Al abrir la página sin sesión aparece un cuadro de acceso con tres opciones: **iniciar sesión**, **crear una cuenta** o cerrarlo y **seguir como invitado**. Sale una vez por pestaña del navegador; después se puede abrir desde el menú de usuario (avatar arriba a la derecha).
+Al abrir la página sin sesión aparece un cuadro de acceso con tres opciones: **iniciar sesión**, **crear una cuenta** o cerrarlo y **seguir como invitado**. Sale una vez por pestaña del navegador; después se puede abrir con el botón «Acceder» de la cabecera (o desde el menú del avatar, si ya hay sesión).
 
-Hay cinco cuentas de prueba (correos `@example.com`). Son cuentas reales de Neon Auth con la contraseña pública **`demo1234`**, así que **cualquiera puede entrar en ellas** y cambiar sus anuncios. También se puede entrar desde **menú de usuario › Cuenta de demostración** o desde «Probar con una cuenta de demostración» en el cuadro de acceso. Las cuentas que crees tú no aparecen ahí: piden su contraseña.
+Hay cinco cuentas de prueba (correos `@example.com`). Son cuentas reales de Neon Auth con la contraseña pública **`demo1234`**, así que **cualquiera puede entrar en ellas** y cambiar sus anuncios. También se puede entrar desde **menú de usuario › Cuenta de demostración** o desde «Usa una cuenta de demostración» en el cuadro de acceso. Las cuentas que crees tú no aparecen ahí: piden su contraseña.
 
 | Cuenta | Perfil |
 |---|---|
@@ -183,17 +183,19 @@ Incluye 27 anuncios variados (todos distintos, con ilustraciones SVG generadas e
 - **Permisos de invitado:** puede ver inicio, búsqueda, categorías, anuncios, perfiles públicos y la ayuda. Para comprar, alquilar, guardar favoritos, enviar mensajes, denunciar, publicar o entrar en los paneles y ajustes se le muestra el cuadro de acceso. La base de datos también las rechaza sin sesión (permisos y RLS), y la web responde abriendo el cuadro de acceso (`auth_required`). Los perfiles marcados como «Solo usuarios registrados» no se muestran a invitados.
 
 **Navegación y diseño**
-- Cabecera persistente con logotipo sustituible, buscador, selector de categorías, favoritos, compras, mensajes (con contadores), botón «Publicar anuncio» y menú desplegable de usuario.
-- Menú principal (Inicio, Explorar, Categorías, Vehículos, Viviendas, Alquileres, Favoritos, Mis compras, Vender, Mi perfil, Ajustes). En móvil: panel lateral desplegable + barra inferior.
+- Interfaz según la guía de estilo de LONJA: «un marketplace de segunda mano moderno, rápido y claro, con un aire sutil de libro de cuentas del siglo XVII». Fondo de pergamino, texto en tinta y sepia, rojo lacre para acciones, precios y enlaces, y oro viejo solo como adorno. Tipografías IM Fell English SC (logotipo y titulares en versalitas), Cormorant Garamond (títulos) e Inter (interfaz y formularios), cargadas desde Google Fonts. Detalles de época: filetes dobles, separadores con rombo, marco doble dorado para los destacados y una textura de papel muy suave. Contrastes AA y foco de teclado visible (contorno sepia de 3 px); botones e iconos de 44 × 44 px.
+- Cabecera persistente con el sello de la marca, buscador, favoritos y mensajes (con contadores), botón «Publicar anuncio» y «Acceder» (invitados) o avatar con menú de la cuenta.
+- En móvil, barra inferior con Inicio, Explorar, Publicar (botón central), Mensajes y Perfil. En la ficha de un anuncio la sustituye una barra fija con «Mensaje» y «Comprar».
+- Vehículos, viviendas y alquileres se abren desde el mosaico de categorías y desde el pie de página.
 - Menús laterales propios en los paneles de vendedor, comprador y ajustes (en móvil pasan a pestañas desplazables).
 - Diseño responsive con Grid y Flexbox, sin desbordamiento horizontal (comprobado a 390, 768 y 1366 px).
 - Estados vacíos, indicadores de carga, avisos (toasts), confirmaciones antes de acciones destructivas y animaciones breves.
 
 **Marketplace**
-- Inicio con buscador destacado y filtros básicos, accesos a categorías, recientes, destacados, recomendaciones, vehículos, viviendas y alquileres.
-- Tarjetas con imagen, título, precio (con periodo de alquiler), ubicación, categoría, venta/alquiler, disponibilidad, vendedor y favorito.
-- Búsqueda y filtros (palabras clave, categoría, precio mín./máx., ubicación, estado, venta/alquiler, fecha de publicación) y orden (recientes, precio ascendente/descendente), sin recargar la página y con «Limpiar filtros».
-- Detalle del anuncio: galería, características según su categoría, condiciones de alquiler, fechas ya reservadas, entrega, vendedor con valoración, denuncia del anuncio.
+- Inicio con buscador (qué y dónde), búsquedas rápidas («Lo más buscado»), mosaico de categorías y tres secciones: «Recién llegados a la lonja», «Selección de la casa» (destacados con marco dorado) y «Pensados para ti». En móvil las filas de tarjetas se desplazan en horizontal.
+- Tarjetas con imagen, precio en rojo lacre (con periodo de alquiler), título, ubicación, vendedor con su valoración, favorito y etiquetas de estado (Reservado, Vendido, Alquiler, Destacado).
+- Búsqueda y filtros (palabras clave, categoría, venta/alquiler, precio mín./máx., ubicación, uno o varios estados del artículo, fecha de publicación) y orden (recientes, precio ascendente/descendente), sin recargar la página. Los filtros activos se ven como píldoras que se quitan con un clic; en móvil el panel de filtros sale desde abajo con el botón «Ver N anuncios».
+- Detalle del anuncio: galería con flechas, contador y miniaturas, precio y acciones (Comprar / Enviar mensaje), tarjeta del vendedor con valoración y operaciones cerradas, características según su categoría, condiciones de alquiler, fechas ya reservadas, entrega, denuncia y «También te puede interesar».
 - Perfil público que respeta las opciones de privacidad del usuario.
 
 **Panel de vendedor**

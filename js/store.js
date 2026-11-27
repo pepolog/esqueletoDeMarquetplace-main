@@ -181,6 +181,7 @@ export const select = {
   /**
    * Búsqueda y filtrado sobre los anuncios públicos.
    * filters: { q, category, vertical, op, min, max, loc, cond, date, sort }
+   * (cond puede ser una lista separada por comas: «like_new,good»)
    */
   searchListings(filters = {}) {
     const query = normalizeText(filters.q);
@@ -190,6 +191,8 @@ export const select = {
     const dateLimits = { '1': 1, '7': 7, '30': 30 };
     const since = dateLimits[filters.date] ? Date.now() - dateLimits[filters.date] * 86_400_000 : null;
     const verticalCategories = filters.vertical ? VERTICALS[filters.vertical]?.categories ?? [] : null;
+    // cond admite varios estados separados por comas («like_new,good»).
+    const conditions = filters.cond ? String(filters.cond).split(',').filter(Boolean) : null;
 
     const results = select.publicListings().filter((listing) => {
       if (filters.category && listing.category !== filters.category) return false;
@@ -197,7 +200,7 @@ export const select = {
       if (filters.op && listing.operationType !== filters.op) return false;
       if (min !== null && listing.price < min) return false;
       if (max !== null && listing.price > max) return false;
-      if (filters.cond && listing.condition !== filters.cond) return false;
+      if (conditions && !conditions.includes(listing.condition)) return false;
       if (since && new Date(listing.createdAt).getTime() < since) return false;
       if (location && !normalizeText(`${listing.location.city} ${listing.location.zone} ${listing.location.postalCode}`).includes(location)) return false;
       if (query) {

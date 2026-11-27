@@ -18,7 +18,7 @@ import { APP_CONFIG } from './data.js';
 import { icon } from './icons.js';
 import { actions, select } from './store.js';
 import { ApiError } from './api.js';
-import { handleError, notice, openModal, qs, qsa, renderField, setAuthRequiredHandler, showFormErrors, toast, withBusy } from './ui.js';
+import { handleError, notice, openModal, qs, qsa, renderField, SEAL_EMBLEM, setAuthRequiredHandler, showFormErrors, toast, withBusy } from './ui.js';
 import { escapeHtml, safeStorage } from './utils.js';
 
 /** Cuadro abierto en este momento (solo puede haber uno). */
@@ -40,7 +40,7 @@ function loginForm() {
       ${renderField({ name: LOGIN_FIELDS.identifier, label: 'Correo o nombre de usuario', autocomplete: 'username', required: true, maxLength: 120 })}
       ${renderField({ name: LOGIN_FIELDS.password, label: 'Contraseña', type: 'password', autocomplete: 'current-password', required: true, maxLength: 128 })}
       <p class="auth__error" data-auth-error role="alert" hidden></p>
-      <button type="submit" class="btn btn--primary btn--block btn--lg">${icon('login')}Entrar</button>
+      <button type="submit" class="btn btn--primary btn--block btn--lg">Iniciar sesión</button>
       <p class="auth__switch">¿No tienes cuenta? <button type="button" class="link-btn" data-auth-tab="register">Crea una gratis</button></p>
     </form>`;
 }
@@ -61,7 +61,7 @@ function registerForm() {
       <p class="field__help auth__hint">Mínimo ${APP_CONFIG.passwordMinLength} caracteres, con letras y números.</p>
       ${renderField({ name: REGISTER_FIELDS.acceptTerms, label: 'Acepto las condiciones de uso y la política de privacidad', type: 'checkbox', required: true })}
       <p class="auth__error" data-auth-error role="alert" hidden></p>
-      <button type="submit" class="btn btn--primary btn--block btn--lg">${icon('userPlus')}Crear cuenta</button>
+      <button type="submit" class="btn btn--primary btn--block btn--lg">Crear cuenta</button>
       <p class="auth__switch">¿Ya tienes cuenta? <button type="button" class="link-btn" data-auth-tab="login">Inicia sesión</button></p>
     </form>`;
 }
@@ -71,7 +71,7 @@ function demoAccounts() {
   if (!demoUsers.length) return '';
   return `
     <details class="auth__demo">
-      <summary>Probar con una cuenta de demostración</summary>
+      <summary>¿Solo quieres echar un vistazo? <strong>Usa una cuenta de demostración</strong></summary>
       <div class="auth__demo-body">
         <label class="field__label" for="auth-demo-user">Cuenta de prueba</label>
         <div class="auth__demo-row">
@@ -83,6 +83,31 @@ function demoAccounts() {
         <p class="field__help">También puedes entrar con su correo y la contraseña <code>${escapeHtml(APP_CONFIG.demoPassword)}</code>.</p>
       </div>
     </details>`;
+}
+
+/** Añade a cada campo de contraseña un botón para mostrarla u ocultarla. */
+function addPasswordToggles(root) {
+  qsa('input[type="password"]', root).forEach((input) => {
+    const wrapper = document.createElement('span');
+    wrapper.className = 'password-field';
+    input.replaceWith(wrapper);
+    wrapper.append(input);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'icon-btn icon-btn--sm password-field__toggle';
+    button.setAttribute('aria-pressed', 'false');
+    button.setAttribute('aria-label', 'Mostrar contraseña');
+    button.innerHTML = icon('eye');
+    button.addEventListener('click', () => {
+      const show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      button.setAttribute('aria-pressed', String(show));
+      button.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
+      button.innerHTML = icon(show ? 'eyeOff' : 'eye');
+      button.classList.toggle('is-active', show);
+    });
+    wrapper.append(button);
+  });
 }
 
 /**
@@ -101,13 +126,14 @@ export function openAuthDialog({ mode = 'login', reason = '', welcome = false } 
   let signedIn = false;
   const current = select.currentUser();
   const { element, close } = openModal({
-    title: welcome ? `Te damos la bienvenida a ${APP_CONFIG.brandName}` : 'Accede a tu cuenta',
+    title: welcome ? 'Te damos la bienvenida a la lonja' : 'Accede a la lonja',
     size: 'auth',
+    lead: SEAL_EMBLEM,
     body: `
       <div class="auth">
         <p class="auth__intro">${current
           ? `Has iniciado sesión como <strong>${escapeHtml(current.displayName)}</strong>. Puedes entrar con otra cuenta o crear una nueva.`
-          : 'Entra para comprar, alquilar, vender y guardar tus favoritos.'}</p>
+          : 'Entra para comprar, vender y hablar con otros usuarios.'}</p>
         <div data-auth-reason></div>
         <div class="auth__tabs" role="tablist" aria-label="Tipo de acceso">
           <button type="button" class="auth__tab" role="tab" id="auth-tab-login" aria-controls="auth-login" data-auth-tab="login">Iniciar sesión</button>
@@ -115,21 +141,22 @@ export function openAuthDialog({ mode = 'login', reason = '', welcome = false } 
         </div>
         ${loginForm()}
         ${registerForm()}
+        <div class="auth__or" aria-hidden="true"><span></span><i></i>o bien<i></i><span></span></div>
+        ${current
+          ? '<button type="button" class="btn btn--ghost btn--block btn--lg" data-modal-close>Cancelar</button>'
+          : '<button type="button" class="btn btn--ghost btn--block btn--lg" data-modal-close data-guest>Seguir como invitado</button>'}
         ${demoAccounts()}
         <p class="auth__local muted small">${icon('info', 'icon--xs')}${select.usesRemoteAccounts()
           ? 'Tu cuenta se guarda de forma segura en el servidor: podrás entrar desde cualquier navegador.'
           : 'Demostración: las cuentas se guardan solo en este navegador.'}</p>
       </div>`,
-    footer: current
-      ? '<button type="button" class="btn btn--ghost" data-modal-close>Cancelar</button>'
-      : `<p class="auth__guest-note">Sin cuenta puedes ver anuncios y perfiles.</p>
-         <button type="button" class="btn btn--ghost" data-modal-close data-guest>Seguir como invitado</button>`,
     onClose: () => {
       activeDialog = null;
       if (!signedIn && welcome && select.isGuest()) toast('Navegas como invitado. Puedes iniciar sesión cuando quieras desde el menú de usuario.', { tone: 'info' });
     },
   });
   element.querySelector('.modal').classList.add('auth-dialog');
+  addPasswordToggles(element);
 
   const loginFormElement = qs('#auth-login', element);
   const registerFormElement = qs('#auth-register', element);

@@ -103,7 +103,7 @@ let modalCounter = 0;
  * al cerrar), la tecla Escape y el clic fuera del contenido.
  * @returns {{ element: HTMLElement, close: Function }}
  */
-export function openModal({ title, body, footer = '', size = 'md', onClose } = {}) {
+export function openModal({ title, body, footer = '', size = 'md', lead = '', onClose } = {}) {
   const previouslyFocused = document.activeElement;
   const titleId = `modal-title-${++modalCounter}`;
   const backdrop = document.createElement('div');
@@ -111,6 +111,7 @@ export function openModal({ title, body, footer = '', size = 'md', onClose } = {
   backdrop.innerHTML = `
     <div class="modal modal--${size}" role="dialog" aria-modal="true" aria-labelledby="${titleId}">
       <header class="modal__header">
+        ${lead ? `<div class="modal__lead">${lead}</div>` : ''}
         <h2 id="${titleId}" class="modal__title">${escapeHtml(title)}</h2>
         <button type="button" class="icon-btn" data-modal-close aria-label="Cerrar">${icon('x')}</button>
       </header>
@@ -169,6 +170,23 @@ export function confirmDialog({ title, message, confirmLabel = 'Confirmar', dang
 }
 
 /* ==========================================================================
+   Emblemas de la guía de estilo
+   ========================================================================== */
+
+/** Sello de la marca: «L» en rojo lacre dentro de un marco doble dorado. */
+export const SEAL_EMBLEM = `<svg class="auth-emblem" viewBox="0 0 40 44" aria-hidden="true"><rect x="1" y="1" width="38" height="42" fill="#FBF5E6" stroke="#C9A86A" stroke-width="2"/><rect x="4.5" y="4.5" width="31" height="35" fill="none" stroke="#C9A86A" stroke-width="0.8"/><path d="M8 36c5-2.5 9-1 13 0s8 1.5 11-1" fill="none" stroke="#C9A86A" stroke-width="1"/><path d="M30 8l2 2-2 2-2-2z" fill="#C9A86A"/><text x="19" y="31" text-anchor="middle" font-family="IM Fell English SC, Georgia, serif" font-size="30" fill="#7A2E1F">L</text></svg>`;
+
+/** Balanza de la lonja (bienvenida y estados vacíos). */
+export function scalesEmblem(className = '') {
+  return `<svg class="${className}" viewBox="0 0 120 96" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M60 16v64M44 86h32M50 80h20M22 24h76M28 24 16 54M28 24l12 30M92 24 80 54M92 24l12 30M12 54c0 9 32 9 32 0zM76 54c0 9 32 9 32 0z"/><circle cx="60" cy="12" r="3.5"/><path d="M17 57l3 3M23 58l3 3M29 58l3 3M35 57l3 2M81 57l3 3M87 58l3 3M93 58l3 3M99 57l3 2M56 34h8M56 44h8M56 54h8M56 64h8" stroke-width="0.7"/></svg>`;
+}
+
+/** Separador de época: filete punteado (o doble) con un rombo dorado en el centro. */
+export function ornamentRule(variant = '') {
+  return `<div class="ornament-rule ${variant ? `ornament-rule--${variant}` : ''}" aria-hidden="true"><span></span><i></i><span></span></div>`;
+}
+
+/* ==========================================================================
    Piezas visuales pequeñas
    ========================================================================== */
 
@@ -220,10 +238,10 @@ export function stars(rating, { showValue = true } = {}) {
 }
 
 /** Estado vacío con icono, texto y acción opcional. */
-export function emptyState({ iconName = 'search', title, text = '', action = '' }) {
+export function emptyState({ iconName = 'search', title, text = '', action = '', emblem = false }) {
   return `
     <div class="empty-state">
-      <div class="empty-state__icon">${icon(iconName)}</div>
+      ${emblem ? scalesEmblem('empty-state__emblem') : `<div class="empty-state__icon">${icon(iconName)}</div>`}
       <h3>${escapeHtml(title)}</h3>
       ${text ? `<p>${escapeHtml(text)}</p>` : ''}
       ${action}
@@ -243,14 +261,29 @@ export function loadingBlock(text = 'Cargando…') {
    Tarjeta de anuncio
    ========================================================================== */
 
-/** Insignia de disponibilidad derivada de los pedidos (Disponible / Reservado / estado). */
-function availabilityBadge(listing) {
-  if (listing.status !== 'active') return listingStatusBadge(listing.status);
-  if (listing.operationType === 'sale' && select.openSaleOrder(listing.id)) return badge('Reservado', 'warning');
-  return badge('Disponible', 'success');
+/** Valoración media con coma decimal («4,8»). */
+export function formatRating(average) {
+  return average === null || average === undefined ? '' : average.toFixed(1).replace('.', ',');
 }
 
-export function listingCard(listing, { showPriceChangeSince = null } = {}) {
+/**
+ * Etiquetas sobre la foto: estado del anuncio (Vendido, Pausado… en tinta),
+ * Reservado (oro viejo) si tiene un pedido abierto, y Alquiler.
+ */
+function cardTags(listing) {
+  const tags = [];
+  if (listing.status !== 'active') tags.push(`<span class="tag tag--ink">${escapeHtml(LISTING_STATUS[listing.status]?.label ?? listing.status)}</span>`);
+  else if (listing.operationType === 'sale' && select.openSaleOrder(listing.id)) tags.push('<span class="tag tag--gold">Reservado</span>');
+  if (listing.operationType === 'rent') tags.push(`<span class="tag tag--outline">${OPERATION_LABELS.rent}</span>`);
+  return tags.length ? `<div class="listing-card__tags">${tags.join('')}</div>` : '';
+}
+
+/**
+ * Tarjeta de anuncio (guía de estilo, apartado VI): foto, precio en rojo
+ * lacre, título, ubicación y, tras un filete punteado, vendedor y valoración.
+ * Los anuncios destacados llevan marco doble dorado y la etiqueta «Destacado».
+ */
+export function listingCard(listing, { showPriceChangeSince = null, featured = false } = {}) {
   const category = getCategory(listing.category);
   const seller = select.user(listing.sellerId);
   const isOwn = listing.sellerId === select.currentUserId();
@@ -258,35 +291,43 @@ export function listingCard(listing, { showPriceChangeSince = null } = {}) {
   const mainImage = listing.images?.[0];
   const priceChange = showPriceChangeSince ? select.priceChangeSince(listing, showPriceChangeSince) : null;
   const title = escapeHtml(listing.title);
+  const showRating = seller?.preferences?.privacy?.showRating !== false;
+  const rating = seller && showRating ? select.ratingSummary(seller.id) : null;
+  const isFeatured = featured && listing.featured;
 
   return `
-    <article class="listing-card" data-listing-id="${listing.id}">
+    <article class="listing-card ${isFeatured ? 'listing-card--featured' : ''} ${listing.status !== 'active' ? 'listing-card--inactive' : ''}" data-listing-id="${listing.id}">
       <div class="listing-card__media">
         ${mainImage
           ? `<img src="${escapeHtml(mainImage.src)}" alt="${escapeHtml(mainImage.alt || listing.title)}" loading="lazy" />`
-          : `<div class="listing-card__noimg">${icon('image')}<span>Sin fotografía</span></div>`}
-        <span class="listing-card__op listing-card__op--${listing.operationType}">${OPERATION_LABELS[listing.operationType]}</span>
+          : `<div class="listing-card__noimg">${icon(category?.icon ?? 'image')}<span>Sin foto · ${escapeHtml(category?.shortName ?? '')}</span></div>`}
+        ${cardTags(listing)}
+        ${isFeatured ? '<span class="tag tag--featured listing-card__featured">Destacado</span>' : ''}
         ${isOwn
-          ? '<span class="listing-card__own">Tu anuncio</span>'
+          ? '<span class="tag tag--ink listing-card__own">Tu anuncio</span>'
           : `<button type="button" class="fav-btn ${isFav ? 'is-active' : ''}" data-action="toggle-favorite" data-listing-id="${listing.id}"
-              aria-pressed="${isFav}" aria-label="${isFav ? 'Quitar de favoritos' : 'Añadir a favoritos'}: ${title}">${icon('heart')}</button>`}
+              aria-pressed="${isFav}" aria-label="${isFav ? 'Quitar de favoritos' : 'Guardar en favoritos'}: ${title}">${icon('heart')}</button>`}
       </div>
       <div class="listing-card__body">
         <p class="listing-card__price">${priceLabel(listing)}</p>
         ${priceChange ? `<p class="price-change ${priceChange.difference < 0 ? 'price-change--down' : 'price-change--up'}">${priceChange.difference < 0 ? 'Ha bajado' : 'Ha subido'} desde ${formatMoney(priceChange.from)}</p>` : ''}
         <h3 class="listing-card__title"><a href="#/listing/${listing.id}" class="stretched-link">${title}</a></h3>
-        <p class="listing-card__meta">${icon('pin', 'icon--xs')}${escapeHtml(listing.location.city)} · ${escapeHtml(category?.shortName ?? '')}</p>
+        <p class="listing-card__meta">${icon('pin', 'icon--xs')}<span>${escapeHtml(listing.location.city)}</span></p>
         <div class="listing-card__footer">
-          <span class="listing-card__seller">${avatar(seller, 'xs')}<span>@${escapeHtml(seller?.username ?? 'usuario')}</span></span>
-          ${availabilityBadge(listing)}
+          <span class="listing-card__seller">${avatar(seller, 'xs')}<span>${escapeHtml(seller?.displayName ?? 'Usuario')}</span></span>
+          ${rating?.average ? `<span class="listing-card__rating" role="img" aria-label="Valoración ${formatRating(rating.average)} de 5">${icon('star')}${formatRating(rating.average)}</span>` : ''}
         </div>
       </div>
     </article>`;
 }
 
-export function listingGrid(listings, { emptyTitle = 'No hay anuncios', emptyText = '', emptyAction = '', cardOptions } = {}) {
-  if (!listings.length) return emptyState({ iconName: 'search', title: emptyTitle, text: emptyText, action: emptyAction });
-  return `<div class="listing-grid">${listings.map((listing) => listingCard(listing, cardOptions)).join('')}</div>`;
+/**
+ * Rejilla de tarjetas. columns: 4 para las filas del inicio (en móvil pasan a
+ * una fila con desplazamiento horizontal).
+ */
+export function listingGrid(listings, { emptyTitle = 'No hay anuncios', emptyText = '', emptyAction = '', cardOptions, columns = 0, emblem = false } = {}) {
+  if (!listings.length) return emptyState({ iconName: 'search', title: emptyTitle, text: emptyText, action: emptyAction, emblem });
+  return `<div class="listing-grid ${columns ? `listing-grid--${columns}` : ''}">${listings.map((listing) => listingCard(listing, cardOptions)).join('')}</div>`;
 }
 
 /** Miniatura + título de un anuncio (para tablas de pedidos, mensajes…). */

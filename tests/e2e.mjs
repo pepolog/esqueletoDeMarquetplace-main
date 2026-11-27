@@ -373,7 +373,7 @@ assert.ok(await page.locator('.listing-card', { hasText: 'Yamaha' }).count());
 assert.ok(await page.locator('.price-change', { hasText: 'Ha bajado' }).count(), 'golf price drop shown');
 await page.locator('.listing-card', { hasText: 'Yamaha' }).locator('.fav-btn').click(); await page.waitForTimeout(500);
 assert.equal(await page.locator('.listing-card', { hasText: 'Yamaha' }).count(), 0);
-await go('#/home');
+await go('#/explore?q=yamaha');
 assert.equal(await page.locator('.listing-card', { hasText: 'Yamaha' }).first().locator('.fav-btn').getAttribute('aria-pressed'), 'false');
 log('6. Favoritos añadidos/quitados y sincronizados con las tarjetas; aviso de bajada de precio');
 

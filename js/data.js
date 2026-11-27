@@ -380,12 +380,19 @@ export const DEMO_ACCOUNTS = [
   { legacyId: 'u5', username: 'anasport', email: 'ana.torres@example.com', displayName: 'Ana Torres' },
 ];
 
-export function placeholderImage({ label, hue = 215, iconName = 'box', variant = 0 }) {
+/**
+ * Ilustración de prueba con el estilo de la guía: pergamino oscuro con rayado
+ * sepia, icono de la categoría a trazo fino y rótulo en versalitas.
+ * (hue se mantiene en los parámetros por compatibilidad con los datos guardados.)
+ */
+export function placeholderImage({ label, iconName = 'box', variant = 0 }) {
   const paths = ICONS[iconName] ?? ICONS.box;
-  const baseHue = (hue + variant * 25) % 360;
-  const secondHue = (baseHue + 35) % 360;
-  const caption = variant ? `${label} · foto ${variant + 1}` : label;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${baseHue},60%,93%)"/><stop offset="1" stop-color="hsl(${secondHue},50%,80%)"/></linearGradient></defs><rect width="800" height="600" fill="url(#g)"/><circle cx="${640 - variant * 80}" cy="${120 + variant * 40}" r="120" fill="hsl(${baseHue},60%,97%)" opacity=".5"/><g transform="translate(310 140) scale(7.5)" fill="none" stroke="hsl(${baseHue},45%,32%)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${paths}</g><text x="400" y="480" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="34" font-weight="600" fill="hsl(${baseHue},40%,22%)">${escapeXml(caption.length > 38 ? `${caption.slice(0, 36)}…` : caption)}</text><text x="400" y="525" text-anchor="middle" font-family="system-ui,sans-serif" font-size="20" fill="hsl(${baseHue},30%,35%)">Imagen de demostración</text></svg>`;
+  const paper = variant % 2 ? '#E9DCC0' : '#E6D7B8';
+  const categoryName = CATEGORIES.find((category) => category.icon === iconName)?.shortName;
+  const caption = `Foto ${variant + 1}${categoryName ? ` · ${categoryName}` : ''}`;
+  const text = String(label ?? '');
+  const subtitle = `${text.length > 40 ? `${text.slice(0, 38)}…` : text}`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"><defs><pattern id="h" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="14" height="14" fill="${paper}"/><rect width="2" height="14" fill="#6B4F35" fill-opacity=".1"/></pattern></defs><rect width="800" height="600" fill="url(#h)"/><g transform="translate(340 170) scale(5)" fill="none" stroke="#6B4F35" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">${paths}</g><text x="400" y="376" text-anchor="middle" font-family="IM Fell English SC,Georgia,'Times New Roman',serif" font-variant="small-caps" font-size="44" letter-spacing="3" fill="#4A3626">${escapeXml(caption)}</text><text x="400" y="424" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="22" font-style="italic" fill="#6B4F35">Imagen de demostración · ${escapeXml(subtitle)}</text></svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 

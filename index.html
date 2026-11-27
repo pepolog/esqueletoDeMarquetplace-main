@@ -3,10 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Lonja: el mercado para comprar, vender y alquilar artículos de segunda mano, vehículos y viviendas." />
-  <meta name="theme-color" content="#1d4ed8" />
-  <title>Lonja · Compra, vende y alquila</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231d4ed8'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='18' font-weight='700' fill='white' text-anchor='middle'%3EL%3C/text%3E%3C/svg%3E" />
+  <meta name="description" content="LONJA: el mercado de segunda mano para comprar, vender y alquilar cerca de ti." />
+  <meta name="theme-color" content="#F3E9D2" />
+  <title>LONJA · Cierra buenos tratos, cerca de ti</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 44'%3E%3Crect x='1' y='1' width='38' height='42' fill='%23FBF5E6' stroke='%23C9A86A' stroke-width='2'/%3E%3Crect x='4.5' y='4.5' width='31' height='35' fill='none' stroke='%23C9A86A' stroke-width='0.8'/%3E%3Ctext x='19' y='31' text-anchor='middle' font-family='Georgia,serif' font-size='28' fill='%237A2E1F'%3EL%3C/text%3E%3C/svg%3E" />
+  <!-- Tipografías del diseño: IM Fell English SC (logotipo y titulares), Cormorant Garamond (títulos) e Inter (interfaz). -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=IM+Fell+English+SC&family=Inter:wght@400;500;600;700&display=swap" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -21,80 +25,52 @@
        CABECERA PERSISTENTE
        ===================================================================== -->
   <header class="site-header">
-    <div class="site-header__inner container">
-      <button type="button" class="icon-btn site-header__menu-btn" id="menu-toggle" aria-label="Abrir menú principal" aria-expanded="false" aria-controls="main-nav">
-        <svg class="icon" aria-hidden="true"><use href="#i-menu"></use></svg>
-      </button>
-
-      <!-- LOGOTIPO: sustituye el contenido de .brand por el logotipo definitivo (SVG o <img>). -->
-      <a href="#/home" class="brand" aria-label="Lonja, ir al inicio">
-        <span class="brand__mark" aria-hidden="true">L</span>
-        <span class="brand__name">Lonja</span>
+    <div class="site-header__inner">
+      <!-- LOGOTIPO: sello con la «L» + nombre en versalitas. -->
+      <a href="#/home" class="brand" aria-label="LONJA, ir al inicio">
+        <svg class="brand__mark" viewBox="0 0 40 44" aria-hidden="true">
+          <rect x="1" y="1" width="38" height="42" fill="#FBF5E6" stroke="#C9A86A" stroke-width="2" />
+          <rect x="4.5" y="4.5" width="31" height="35" fill="none" stroke="#C9A86A" stroke-width="0.8" />
+          <path d="M8 36c5-2.5 9-1 13 0s8 1.5 11-1" fill="none" stroke="#C9A86A" stroke-width="1" />
+          <path d="M30 8l2 2-2 2-2-2z" fill="#C9A86A" />
+          <text x="19" y="31" text-anchor="middle" font-family="IM Fell English SC, Georgia, serif" font-size="30" fill="#7A2E1F">L</text>
+        </svg>
+        <span class="brand__name">LONJA</span>
       </a>
 
-      <!-- Buscador + selector de categorías -->
+      <!-- Buscador -->
       <form class="header-search" id="header-search" role="search" aria-label="Buscar anuncios">
-        <label for="header-search-input" class="visually-hidden">Buscar</label>
+        <label for="header-search-input" class="visually-hidden">Buscar en LONJA</label>
         <svg class="icon header-search__icon" aria-hidden="true"><use href="#i-search"></use></svg>
-        <input id="header-search-input" name="q" type="search" placeholder="Buscar coches, pisos, móviles…" autocomplete="off" />
-        <label for="header-category" class="visually-hidden">Categoría</label>
-        <select id="header-category" name="category" class="header-search__category">
-          <option value="">Todas las categorías</option>
-        </select>
-        <button type="submit" class="btn btn--primary header-search__submit">Buscar</button>
+        <input id="header-search-input" name="q" type="search" placeholder="Busca bicicletas, móviles, chaquetas…" autocomplete="off" />
       </form>
 
-      <nav class="header-actions" aria-label="Accesos de usuario">
+      <nav class="header-actions" aria-label="Tu cuenta">
         <a href="#/favorites" class="icon-btn header-actions__link" aria-label="Favoritos">
           <svg class="icon" aria-hidden="true"><use href="#i-heart"></use></svg>
-          <span class="header-actions__text">Favoritos</span>
           <span class="count-dot" data-count="favorites" hidden></span>
         </a>
-        <a href="#/purchases" class="icon-btn header-actions__link" aria-label="Mis compras y pedidos">
-          <svg class="icon" aria-hidden="true"><use href="#i-bag"></use></svg>
-          <span class="header-actions__text">Compras</span>
-          <span class="count-dot" data-count="orders" hidden></span>
-        </a>
-        <a href="#/buyer/messages" class="icon-btn header-actions__link" aria-label="Mensajes">
+        <a href="#/buyer/messages" class="icon-btn header-actions__link header-actions__messages" aria-label="Mensajes">
           <svg class="icon" aria-hidden="true"><use href="#i-message"></use></svg>
-          <span class="header-actions__text">Mensajes</span>
           <span class="count-dot" data-count="messages" hidden></span>
         </a>
-        <a href="#/sell" class="btn btn--accent header-actions__publish">
+        <a href="#/sell" class="btn btn--primary header-actions__publish">
           <svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>
           <span>Publicar anuncio</span>
         </a>
 
-        <!-- Perfil + menú desplegable -->
+        <!-- Cuenta: «Acceder» para invitados o avatar con menú desplegable -->
         <div class="user-menu" id="user-menu">
           <button type="button" class="user-menu__trigger" id="user-menu-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="user-menu-panel">
             <span id="user-menu-avatar"></span>
-            <svg class="icon icon--xs" aria-hidden="true"><use href="#i-chevronDown"></use></svg>
+            <svg class="icon icon--xs user-menu__chevron" aria-hidden="true"><use href="#i-chevronDown"></use></svg>
             <span class="visually-hidden">Menú de usuario</span>
           </button>
           <div class="user-menu__panel" id="user-menu-panel" hidden></div>
         </div>
       </nav>
     </div>
-
-    <!-- MENÚ PRINCIPAL (barra en escritorio, panel desplegable en móvil) -->
-    <nav class="main-nav" id="main-nav" aria-label="Menú principal">
-      <ul class="main-nav__list container">
-        <li><a href="#/home" data-nav="home"><svg class="icon" aria-hidden="true"><use href="#i-home"></use></svg>Inicio</a></li>
-        <li><a href="#/explore" data-nav="explore"><svg class="icon" aria-hidden="true"><use href="#i-compass"></use></svg>Explorar anuncios</a></li>
-        <li><a href="#/categories" data-nav="categories"><svg class="icon" aria-hidden="true"><use href="#i-grid"></use></svg>Categorías</a></li>
-        <li><a href="#/vehicles" data-nav="vehicles"><svg class="icon" aria-hidden="true"><use href="#i-car"></use></svg>Vehículos</a></li>
-        <li><a href="#/housing" data-nav="housing"><svg class="icon" aria-hidden="true"><use href="#i-building"></use></svg>Viviendas</a></li>
-        <li><a href="#/rentals" data-nav="rentals"><svg class="icon" aria-hidden="true"><use href="#i-key"></use></svg>Alquileres</a></li>
-        <li><a href="#/favorites" data-nav="favorites"><svg class="icon" aria-hidden="true"><use href="#i-heart"></use></svg>Favoritos</a></li>
-        <li><a href="#/purchases" data-nav="purchases"><svg class="icon" aria-hidden="true"><use href="#i-bag"></use></svg>Mis compras</a></li>
-        <li><a href="#/seller/overview" data-nav="sell"><svg class="icon" aria-hidden="true"><use href="#i-store"></use></svg>Vender</a></li>
-        <li><a href="#/profile" data-nav="profile"><svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg>Mi perfil</a></li>
-        <li><a href="#/settings/personal" data-nav="settings"><svg class="icon" aria-hidden="true"><use href="#i-sliders"></use></svg>Ajustes</a></li>
-      </ul>
-    </nav>
   </header>
-  <div class="nav-overlay" id="nav-overlay" hidden></div>
 
   <!-- =====================================================================
        CONTENIDO: cada sección se dibuja aquí desde JavaScript (app.js)
@@ -103,30 +79,40 @@
     <div id="view" class="view">
       <div class="loading-block" role="status">
         <span class="spinner spinner--lg" aria-hidden="true"></span>
-        <span>Cargando la marketplace…</span>
+        <span>Abriendo la lonja…</span>
       </div>
     </div>
   </main>
 
   <footer class="site-footer">
-    <div class="container site-footer__inner">
-      <p>© <span id="footer-year"></span> Lonja · Tu mercado para comprar, vender y alquilar. Prototipo con datos ficticios.</p>
-      <nav aria-label="Enlaces legales">
-        <a href="#/settings/help">Ayuda</a>
-        <a href="#/settings/help?open=terms">Condiciones de uso</a>
-        <a href="#/settings/help?open=privacy">Privacidad</a>
-        <a href="#/settings/help?open=rules">Normas de publicación</a>
-      </nav>
+    <div class="container">
+      <div class="ornament-rule ornament-rule--double" aria-hidden="true"><span></span><i></i><span></span></div>
+      <div class="site-footer__row">
+        <div class="site-footer__main">
+          <span class="site-footer__brand">LONJA</span>
+          <nav aria-label="Pie de página" class="site-footer__nav">
+            <a href="#/settings/help">Ayuda</a>
+            <a href="#/settings/help?open=rules">Normas de la comunidad</a>
+            <a href="#/settings/help?open=privacy">Privacidad</a>
+            <a href="#/settings/help?open=terms">Condiciones de uso</a>
+          </nav>
+        </div>
+        <p class="site-footer__also">
+          <span class="tag tag--outline">También en la lonja</span>
+          <a href="#/vehicles">Vehículos</a><span aria-hidden="true">·</span><a href="#/housing">Viviendas</a><span aria-hidden="true">·</span><a href="#/rentals">Alquileres</a>
+        </p>
+      </div>
+      <p class="site-footer__credit">Proyecto intermodular · 2.º CFGM Sistemas Microinformáticos y Redes · Santiago Lopera Zapata</p>
     </div>
   </footer>
 
   <!-- Navegación inferior (solo móvil) -->
-  <nav class="bottom-nav" aria-label="Navegación rápida">
+  <nav class="bottom-nav" aria-label="Navegación principal">
     <a href="#/home" data-nav="home"><svg class="icon" aria-hidden="true"><use href="#i-home"></use></svg><span>Inicio</span></a>
-    <a href="#/explore" data-nav="explore"><svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg><span>Buscar</span></a>
-    <a href="#/sell" data-nav="sell" class="bottom-nav__publish"><svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg><span>Publicar</span></a>
-    <a href="#/favorites" data-nav="favorites"><svg class="icon" aria-hidden="true"><use href="#i-heart"></use></svg><span>Favoritos</span></a>
-    <a href="#/buyer/overview" data-nav="account"><svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg><span>Cuenta</span></a>
+    <a href="#/explore" data-nav="explore"><svg class="icon" aria-hidden="true"><use href="#i-compass"></use></svg><span>Explorar</span></a>
+    <a href="#/sell" data-nav="sell" class="bottom-nav__publish"><span class="bottom-nav__publish-circle"><svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg></span><span>Publicar</span></a>
+    <a href="#/buyer/messages" data-nav="messages"><svg class="icon" aria-hidden="true"><use href="#i-message"></use></svg><span>Mensajes</span><span class="count-dot" data-count="messages-mobile" hidden></span></a>
+    <a href="#/buyer/overview" data-nav="account"><svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg><span>Perfil</span></a>
   </nav>
 
   <!-- Región de avisos accesible -->
@@ -138,7 +124,7 @@
       document.getElementById('view').innerHTML =
         '<div class="notice notice--warning" style="margin:2rem auto;max-width:640px">' +
         '<div><strong>Este proyecto usa módulos JavaScript y debe abrirse mediante un servidor local.</strong>' +
-        '<p>En la carpeta del proyecto ejecuta <code>python3 -m http.server 8080</code> ' +
+        '<p>En la carpeta del proyecto ejecuta <code>python -m http.server 8080</code> ' +
         'y abre <code>http://localhost:8080</code>. Consulta el README para más opciones.</p></div></div>';
     }
   </script>
